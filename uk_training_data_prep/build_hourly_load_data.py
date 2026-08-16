@@ -5,8 +5,8 @@ import pandas as pd
 
 INPUT_FOLDER = Path(r"C:\Users\ASUS\Downloads")
 START_YEAR = 2010
-END_YEAR = 2026
-TARGET_END_TIMESTAMP = pd.Timestamp("2026-06-30 23:00:00")
+END_YEAR = pd.Timestamp.today().year
+TARGET_END_TIMESTAMP: pd.Timestamp | None = None
 LATEST_OUTPUT_PATH = Path("data") / "uk_load_hourly.csv"
 
 DATE_COLUMN = "SETTLEMENT_DATE"
@@ -81,7 +81,7 @@ def build_load_dataset() -> pd.DataFrame:
 
     start = pd.Timestamp(f"{START_YEAR}-01-01 00:00:00")
     latest_available = hourly["timestamp"].max()
-    end = min(TARGET_END_TIMESTAMP, latest_available)
+    end = min(TARGET_END_TIMESTAMP, latest_available) if TARGET_END_TIMESTAMP else latest_available
     full_index = pd.date_range(start=start, end=end, freq="h")
 
     hourly = hourly.set_index("timestamp").reindex(full_index)

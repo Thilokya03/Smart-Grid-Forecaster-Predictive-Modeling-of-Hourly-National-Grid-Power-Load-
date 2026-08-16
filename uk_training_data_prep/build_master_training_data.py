@@ -4,10 +4,13 @@ from typing import Iterable
 import pandas as pd
 
 LOAD_PATH = Path("data") / "uk_load_hourly.csv"
-WEATHER_PATH = Path("data") / "weather_historical" / "uk_average_weather.csv"
+WEATHER_PATH = Path("data") / "weather_hourly.csv"
 HOLIDAYS_PATH = Path("data/external/uk_features") / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = Path("data/external/uk_features") / "uk_economic_features_daily_2010_onwards.csv"
 OUTPUT_PATH = Path("data") / "processed" / "master_training_data.csv"
+ENABLE_YEARLY_ROLLING_WINDOW = True
+ROLLING_WINDOW_YEARS_BEFORE_CURRENT_YEAR = 16
+ROLLING_WINDOW_REFERENCE_DATE: str | None = None
 
 TIMESTAMP_COLUMN = "timestamp"
 DATE_COLUMN = "date"
@@ -249,6 +252,23 @@ def merge_datasets(
     return merged
 
 
+def apply_yearly_rolling_window(frame: pd.DataFrame) -> pd.DataFrame:
+    if not ENABLE_YEARLY_ROLLING_WINDOW:
+        return frame
+
+    reference_date = (
+        pd.Timestamp(ROLLING_WINDOW_REFERENCE_DATE)
+        if ROLLING_WINDOW_REFERENCE_DATE
+        else pd.Timestamp.today()
+    )
+    start_year = reference_date.year - ROLLING_WINDOW_YEARS_BEFORE_CURRENT_YEAR
+    start_timestamp = pd.Timestamp(f"{start_year}-01-01 00:00:00")
+
+    filtered = frame[frame[TIMESTAMP_COLUMN] >= start_timestamp].copy()
+    print(f"Applied rolling window from {start_timestamp:%Y-%m-%d}")
+    return filtered.reset_index(drop=True)
+
+
 def main() -> None:
     load_path = resolve_path(LOAD_PATH)
     weather_path = resolve_path(WEATHER_PATH)
@@ -277,6 +297,7 @@ def main() -> None:
         print(f"Economic file not found, continuing without it: {economic_path}")
 
     merged = merge_datasets(load_df, weather_df, holidays_df, economic_df)
+    merged = apply_yearly_rolling_window(merged)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output_path, index=False)
 
