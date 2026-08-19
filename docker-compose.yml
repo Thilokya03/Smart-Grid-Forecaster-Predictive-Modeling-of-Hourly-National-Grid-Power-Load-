@@ -1,0 +1,13 @@
+services:
+  pipeline-ui:
+    build: .
+    container_name: uk-weather-pipeline-ui
+    ports:
+      - "8765:8765"
+    environment:
+      DEMAND_INPUT_FOLDER: /input/demand
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - ${USERPROFILE}/Downloads:/input/demand:ro
+    restart: unless-stopped

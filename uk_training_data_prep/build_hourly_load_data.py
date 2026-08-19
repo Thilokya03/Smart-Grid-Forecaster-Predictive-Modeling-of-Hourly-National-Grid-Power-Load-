@@ -1,17 +1,24 @@
+import os
 from pathlib import Path
 
 import pandas as pd
 
 
-INPUT_FOLDER = Path(r"C:\Users\ASUS\Downloads")
+INPUT_FOLDER = Path(os.getenv("DEMAND_INPUT_FOLDER", Path.home() / "Downloads"))
+RAW_NESO_FOLDER = Path("data") / "raw" / "neso"
 START_YEAR = 2010
-END_YEAR = pd.Timestamp.today().year
+END_YEAR = pd.Timestamp.now(tz="UTC").year
 TARGET_END_TIMESTAMP: pd.Timestamp | None = None
 LATEST_OUTPUT_PATH = Path("data") / "uk_load_hourly.csv"
+DELETE_OLD_TIMESTAMPED_OUTPUTS = True
 
 DATE_COLUMN = "SETTLEMENT_DATE"
 PERIOD_COLUMN = "SETTLEMENT_PERIOD"
 LOAD_COLUMN = "ND"
+
+
+def current_utc_hour() -> pd.Timestamp:
+    return pd.Timestamp.now(tz="UTC").tz_localize(None).floor("h")
 
 
 def read_year_file(year: int) -> pd.DataFrame:
@@ -30,6 +37,8 @@ def read_year_file(year: int) -> pd.DataFrame:
 
 def find_year_file(year: int) -> Path | None:
     candidates = [
+        RAW_NESO_FOLDER / f"demanddataupdate_{year}.csv",
+        RAW_NESO_FOLDER / f"demanddata_{year}.csv",
         INPUT_FOLDER / f"demanddata_{year}.csv",
         INPUT_FOLDER / f"demanddataupdate_{year}.csv",
     ]
@@ -81,7 +90,11 @@ def build_load_dataset() -> pd.DataFrame:
 
     start = pd.Timestamp(f"{START_YEAR}-01-01 00:00:00")
     latest_available = hourly["timestamp"].max()
-    end = min(TARGET_END_TIMESTAMP, latest_available) if TARGET_END_TIMESTAMP else latest_available
+    current_hour = current_utc_hour()
+    end_candidates = [latest_available, current_hour]
+    if TARGET_END_TIMESTAMP is not None:
+        end_candidates.append(pd.Timestamp(TARGET_END_TIMESTAMP))
+    end = min(end_candidates)
     full_index = pd.date_range(start=start, end=end, freq="h")
 
     hourly = hourly.set_index("timestamp").reindex(full_index)
@@ -91,11 +104,23 @@ def build_load_dataset() -> pd.DataFrame:
     return hourly.reset_index()
 
 
+def delete_old_timestamped_outputs() -> None:
+    if not DELETE_OLD_TIMESTAMPED_OUTPUTS:
+        return
+
+    data_folder = Path("data")
+    for old_path in data_folder.glob(f"uk_load_{START_YEAR}_*_hourly.csv"):
+        old_path.unlink()
+
+
 def main() -> None:
     output = build_load_dataset()
     end_label = pd.to_datetime(output["timestamp"].max()).strftime("%Y_%m_%d")
     output_path = Path("data") / f"uk_load_{START_YEAR}_{end_label}_hourly.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    delete_old_timestamped_outputs()
+    if LATEST_OUTPUT_PATH.exists():
+        LATEST_OUTPUT_PATH.unlink()
     output.to_csv(output_path, index=False)
     output.to_csv(LATEST_OUTPUT_PATH, index=False)
 

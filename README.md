@@ -81,3 +81,127 @@ python weather_pipeline\api_weather.py
 ```
 
 Use `weather_pipeline\bridge_weather_from_july.py` only when there is an older missing gap that the rolling 7-day history can no longer cover.
+
+## Monthly Dataset Update
+
+At the start of a new month, place the latest NESO demand CSV in `Downloads` using one of these names:
+
+- `demanddata_YYYY.csv`
+- `demanddataupdate_YYYY.csv`
+
+Then run:
+
+```powershell
+python uk_training_data_prep\run_monthly_dataset_update.py
+```
+
+This runs:
+
+- local UK holiday/economic feature refresh
+- combined weather feature rebuild
+- hourly demand rebuild
+- master training dataset rebuild
+- forecast feature dataset rebuild
+
+The local feature refresh reads the existing source files in `data/external/uk_features` and regenerates the project-ready `2010_onwards` files. The GitHub release synchronizer is kept separately for later online updates.
+
+The final master file is:
+
+- `data/processed/master_training_data.csv`
+
+The prediction input file is:
+
+- `data/processed/forecast_feature_data.csv`
+
+`master_training_data.csv` contains historical rows with `demand_mw` for training. `forecast_feature_data.csv` contains future weather timestamps joined with calendar/holiday and economic features for inference.
+
+## Hourly Load Data
+
+To rebuild only the hourly UK load file, run:
+
+```powershell
+python uk_training_data_prep\build_hourly_load_data.py
+```
+
+This reads NESO demand files from:
+
+- `data/raw/neso/`
+- your user `Downloads` folder, or the folder set in `DEMAND_INPUT_FOLDER`
+
+Outputs:
+
+- `data/uk_load_hourly.csv`
+- `data/uk_load_2010_YYYY_MM_DD_hourly.csv`
+
+The load builder caps output at the current UTC hour. This prevents future zero rows from NESO update files being written into `uk_load_hourly.csv`. Old timestamped `uk_load_2010_*_hourly.csv` files are deleted before the newest one is created.
+
+To refresh only the local holiday/economic feature copies and rebuild the master dataset from the browser, use:
+
+- `Refresh Local Features + Rebuild Master`
+
+By default the monthly runner does not call the live weather API. If you want the monthly update to fetch fresh rolling weather as well, set this in `uk_training_data_prep/run_monthly_dataset_update.py`:
+
+```python
+RUN_WEATHER_API_UPDATE = True
+```
+
+## Yearly Rolling Window
+
+`build_master_training_data.py` applies a yearly rolling training window:
+
+```python
+ENABLE_YEARLY_ROLLING_WINDOW = True
+ROLLING_WINDOW_YEARS_BEFORE_CURRENT_YEAR = 16
+```
+
+That means:
+
+- during 2026, the master dataset starts at `2010-01-01`
+- on `2027-01-01`, it starts at `2011-01-01`
+- on `2028-01-01`, it starts at `2012-01-01`
+
+This keeps the dataset current without growing forever.
+
+## Local Pipeline UI
+
+Run this to inspect dataset freshness and trigger update steps from a browser:
+
+```powershell
+python ui\pipeline_dashboard.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The UI shows row counts, date ranges, modified times, and buttons for the sync/build scripts.
+
+## Docker
+
+Build and run the local UI container:
+
+```powershell
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The compose file mounts:
+
+- `./data` to `/app/data`
+- `./artifacts` to `/app/artifacts`
+- your Windows `Downloads` folder to `/input/demand`
+
+The demand builder reads `DEMAND_INPUT_FOLDER`, so inside Docker it uses `/input/demand`, while local runs default to your user `Downloads` folder.
+
+Stop the container:
+
+```powershell
+docker compose down
+```

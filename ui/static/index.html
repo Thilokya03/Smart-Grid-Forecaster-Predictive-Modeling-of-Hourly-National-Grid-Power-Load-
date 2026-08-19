@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK Smart Grid Forecaster Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2026-08-19-ui-v10">
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <h1>UK Smart Grid Forecaster</h1>
+      <nav>
+        <a href="#overview">Overview</a>
+        <a href="#eda">Exploratory Analysis</a>
+        <a href="#events">Special Days</a>
+        <a href="#predictionInputs">Prediction Inputs</a>
+        <a href="#forecastModels">Forecast Models</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#models">Models</a>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <h2>Dataset & Forecast Testing UI</h2>
+        <p>Historical demand/weather exploration, recent event checks, weather forecast preview, and pipeline controls. Version: 2026-08-19-ui-v10.</p>
+      </header>
+
+      <section id="overview">
+        <h3>Overview</h3>
+        <div id="kpis" class="grid"></div>
+      </section>
+
+      <section id="eda">
+        <h3>Exploratory Analysis</h3>
+        <div class="toolbar">
+          <button data-period="last_day">Last Day</button>
+          <button data-period="last_week" class="active">Last Week</button>
+          <button data-period="last_month">Last Month</button>
+          <button data-period="last_3_months">Last 3 Months</button>
+          <button data-period="max">Max</button>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Demand History</h4><div id="demandChart"></div></div>
+          <div class="chart-card"><h4>Weather Drivers</h4><div id="weatherChart"></div></div>
+          <div class="chart-card"><h4>Average Demand by Hour</h4><div id="profileChart"></div></div>
+        </div>
+      </section>
+
+      <section id="events">
+        <h3>Special Days in Last 3 Months</h3>
+        <div id="eventsList" class="event-list"></div>
+      </section>
+
+      <section id="predictionInputs">
+        <h3>Prediction Inputs</h3>
+        <div id="forecastInputKpis" class="grid"></div>
+        <div class="weather-chart-grid">
+          <div class="chart-card"><h4>Temperature Forecast</h4><div id="forecastTempChart"></div></div>
+          <div class="chart-card"><h4>Rain Forecast</h4><div id="forecastRainChart"></div></div>
+          <div class="chart-card"><h4>Cloud Cover Forecast</h4><div id="forecastCloudChart"></div></div>
+        </div>
+        <h4>Upcoming Holidays / Events</h4>
+        <div id="upcomingHolidayList" class="event-list"></div>
+        <h4>Economic Inputs for Coming Week</h4>
+        <div class="table-wrap"><table id="economicInputTable"></table></div>
+        <h4>Prediction / Support Files</h4>
+        <div class="table-wrap"><table id="supportDatasetTable"></table></div>
+      </section>
+
+      <section id="forecastModels">
+        <h3>Forecast Model Visualizer</h3>
+        <div class="toolbar">
+          <button data-model="prophet_v1" class="model-active">Prophet v1</button>
+          <button data-model="prophet_v2">Prophet v2</button>
+          <button data-model="xgboost">XGBoost</button>
+        </div>
+        <div id="modelMetrics" class="grid"></div>
+        <p id="modelMessage"></p>
+        <div class="chart-card"><h4>Actual vs Predicted Demand</h4><div id="modelChart"></div></div>
+      </section>
+
+      <section id="pipeline">
+        <h3>Pipeline Actions</h3>
+        <div class="task-grid">
+          <form method="post" action="/run"><input type="hidden" name="task" value="sync_features"><button type="submit">Refresh Local Features + Rebuild Master</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_weather"><button type="submit">Build Combined Weather</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_load"><button type="submit">Build Hourly Demand</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="update_demand"><button type="submit">Update NESO Demand + Rebuild Master</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="update_all_live"><button type="submit">Update Demand + Weather + All Datasets</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_master"><button type="submit">Build Master Dataset</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_forecast_features"><button type="submit">Build Forecast Feature Dataset</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="update_weather_forecast"><button type="submit">Update Weather + Forecast Inputs</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="monthly_update"><button type="submit">Run Monthly Dataset Update</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="train_prophet_v1"><button type="submit">Train Prophet v1</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="train_prophet_v2"><button type="submit">Train Prophet v2</button></form>
+        </div>
+      </section>
+
+      <section>
+        <h3>Historical Training Files</h3>
+        <div class="table-wrap"><table id="datasetTable"></table></div>
+      </section>
+
+      <section id="models">
+        <h3>Model Artifacts</h3>
+        <div class="table-wrap"><table id="artifactTable"></table></div>
+      </section>
+
+      <section>
+        <h3>Last Command Output</h3>
+        <pre id="lastOutput">No command has been run from this UI yet.</pre>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js?v=2026-08-19-ui-v10"></script>
+</body>
+</html>

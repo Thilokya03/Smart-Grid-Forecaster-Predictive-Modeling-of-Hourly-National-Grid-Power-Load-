@@ -197,6 +197,10 @@ def standardize_economic(economic: pd.DataFrame) -> pd.DataFrame:
     if not numeric_columns:
         raise ValueError("Economic file must contain at least one numeric feature column.")
 
+    carry_forward_columns = [column for column in numeric_columns if column != "economic_data_complete"]
+    if carry_forward_columns:
+        cleaned[carry_forward_columns] = cleaned[carry_forward_columns].ffill()
+
     keep_columns = [TIMESTAMP_COLUMN, *numeric_columns]
     cleaned = cleaned[keep_columns].sort_values(TIMESTAMP_COLUMN)
     cleaned = cleaned.drop_duplicates(subset=[TIMESTAMP_COLUMN], keep="last")
@@ -259,7 +263,7 @@ def apply_yearly_rolling_window(frame: pd.DataFrame) -> pd.DataFrame:
     reference_date = (
         pd.Timestamp(ROLLING_WINDOW_REFERENCE_DATE)
         if ROLLING_WINDOW_REFERENCE_DATE
-        else pd.Timestamp.today()
+        else pd.Timestamp.now(tz="UTC").tz_localize(None)
     )
     start_year = reference_date.year - ROLLING_WINDOW_YEARS_BEFORE_CURRENT_YEAR
     start_timestamp = pd.Timestamp(f"{start_year}-01-01 00:00:00")
@@ -283,6 +287,9 @@ def main() -> None:
 
     load_df = load_hourly_csv(load_path, "Load")
     weather_df = standardize_weather(load_hourly_csv(weather_path, "Weather"))
+    latest_weather_timestamp = weather_df[TIMESTAMP_COLUMN].max()
+    load_df = load_df[load_df[TIMESTAMP_COLUMN] <= latest_weather_timestamp].copy()
+    print(f"Capped load rows at latest weather timestamp: {latest_weather_timestamp}")
 
     holidays_df = None
     if holidays_path is not None and holidays_path.exists():
