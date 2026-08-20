@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UK Smart Grid Forecaster Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2026-08-19-ui-v10">
+  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v15">
 </head>
 <body>
   <div class="shell">
@@ -16,6 +16,8 @@
         <a href="#events">Special Days</a>
         <a href="#predictionInputs">Prediction Inputs</a>
         <a href="#forecastModels">Forecast Models</a>
+        <a href="/model-comparison">Model Comparison</a>
+        <a href="#notebookModels">Notebook Logs</a>
         <a href="#pipeline">Pipeline</a>
         <a href="#models">Models</a>
       </nav>
@@ -23,7 +25,7 @@
     <main>
       <header>
         <h2>Dataset & Forecast Testing UI</h2>
-        <p>Historical demand/weather exploration, recent event checks, weather forecast preview, and pipeline controls. Version: 2026-08-19-ui-v10.</p>
+        <p>Historical demand/weather exploration, recent event checks, weather forecast preview, and pipeline controls. Version: 2026-08-20-ui-v15.</p>
       </header>
 
       <section id="overview">
@@ -70,30 +72,44 @@
 
       <section id="forecastModels">
         <h3>Forecast Model Visualizer</h3>
+        <p class="section-note">This chart uses local prediction artifact files. Use Model Comparison for CV leaderboard and tuning results.</p>
         <div class="toolbar">
-          <button data-model="prophet_v1" class="model-active">Prophet v1</button>
-          <button data-model="prophet_v2">Prophet v2</button>
+          <button data-model="prophet_v1" class="model-active">Prophet v1 Baseline</button>
           <button data-model="xgboost">XGBoost</button>
+          <button data-model="sarimax">SARIMAX</button>
         </div>
         <div id="modelMetrics" class="grid"></div>
         <p id="modelMessage"></p>
         <div class="chart-card"><h4>Actual vs Predicted Demand</h4><div id="modelChart"></div></div>
       </section>
 
+      <section id="modelComparisonLink">
+        <h3>Model Comparison</h3>
+        <p class="section-note">Open the dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, CV leaderboards, and tuning details.</p>
+        <a class="primary-link" href="/model-comparison">Open Model Comparison</a>
+      </section>
+
+      <section id="notebookModels">
+        <h3>Notebook Logs & Source Evidence</h3>
+        <p class="section-note">Training notebooks are treated as evidence files. Their extracted metrics are shown in Model Comparison.</p>
+        <h4>Notebook Comparison</h4>
+        <div class="table-wrap"><table id="notebookRunTable"></table></div>
+        <h4>Notebook Sources</h4>
+        <div class="table-wrap"><table id="notebookSourceTable"></table></div>
+      </section>
+
       <section id="pipeline">
         <h3>Pipeline Actions</h3>
         <div class="task-grid">
-          <form method="post" action="/run"><input type="hidden" name="task" value="sync_features"><button type="submit">Refresh Local Features + Rebuild Master</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="build_weather"><button type="submit">Build Combined Weather</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="build_load"><button type="submit">Build Hourly Demand</button></form>
+          <form class="task-primary" method="post" action="/run"><input type="hidden" name="task" value="update_all_live"><button type="submit">Update Demand + Weather + All Datasets</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="update_weather_forecast"><button type="submit">Update Weather + Forecast Inputs</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="update_demand"><button type="submit">Update NESO Demand + Rebuild Master</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="update_all_live"><button type="submit">Update Demand + Weather + All Datasets</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="monthly_update"><button type="submit">Run Monthly Dataset Update</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="sync_features"><button type="submit">Refresh Local Features + Rebuild Master</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_load"><button type="submit">Build Hourly Demand</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="build_weather"><button type="submit">Build Combined Weather</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="build_master"><button type="submit">Build Master Dataset</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="build_forecast_features"><button type="submit">Build Forecast Feature Dataset</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="update_weather_forecast"><button type="submit">Update Weather + Forecast Inputs</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="monthly_update"><button type="submit">Run Monthly Dataset Update</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="train_prophet_v1"><button type="submit">Train Prophet v1</button></form>
-          <form method="post" action="/run"><input type="hidden" name="task" value="train_prophet_v2"><button type="submit">Train Prophet v2</button></form>
         </div>
       </section>
 
@@ -113,6 +129,6 @@
       </section>
     </main>
   </div>
-  <script src="/static/app.js?v=2026-08-19-ui-v10"></script>
+  <script src="/static/app.js?v=2026-08-20-ui-v15"></script>
 </body>
 </html>

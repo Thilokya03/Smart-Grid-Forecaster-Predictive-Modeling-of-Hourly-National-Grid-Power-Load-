@@ -2,9 +2,11 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
+from requests import RequestException
 
 from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
 
@@ -36,7 +38,7 @@ def get_anchor_hour(anchor_time: str | None) -> datetime:
     if anchor_time:
         return floor_to_hour(pd.Timestamp(anchor_time).to_pydatetime())
 
-    return floor_to_hour(datetime.now())
+    return floor_to_hour(datetime.now(ZoneInfo(TIMEZONE)).replace(tzinfo=None))
 
 
 def get_window_bounds(anchor_hour: datetime) -> tuple[datetime, datetime, datetime, datetime]:
@@ -281,6 +283,17 @@ def update_bridge_from_rolling_history() -> None:
         print(f"Warning: bridge maintenance failed after weather update: {exc}")
 
 
+def use_cached_weather_outputs(exc: Exception) -> bool:
+    if not HISTORY_OUTPUT.exists() or not FORECAST_OUTPUT.exists():
+        return False
+
+    print(f"Weather API fetch failed: {exc}")
+    print(f"Using cached weather history -> {HISTORY_OUTPUT}")
+    print(f"Using cached weather forecast -> {FORECAST_OUTPUT}")
+    update_bridge_from_rolling_history()
+    return True
+
+
 def run_once() -> None:
     anchor_hour = get_anchor_hour(TEST_ANCHOR_TIME)
     history_start, history_end, forecast_start, forecast_end = get_window_bounds(anchor_hour)
@@ -297,7 +310,12 @@ def run_once() -> None:
 
     for city, (latitude, longitude) in UK_CITIES.items():
         print(f"Fetching {city}...")
-        city_weather = fetch_weather_window(city, latitude, longitude)
+        try:
+            city_weather = fetch_weather_window(city, latitude, longitude)
+        except RequestException as exc:
+            if use_cached_weather_outputs(exc):
+                return
+            raise
         history, forecast = split_windows(city_weather, anchor_hour)
         history_frames.append(history)
         forecast_frames.append(forecast)
@@ -333,7 +351,7 @@ def run_once() -> None:
 
 
 def seconds_until_next_hour() -> float:
-    now = datetime.now()
+    now = datetime.now(ZoneInfo(TIMEZONE)).replace(tzinfo=None)
     next_hour = floor_to_hour(now) + timedelta(hours=1)
     return max(1.0, (next_hour - now).total_seconds())
 

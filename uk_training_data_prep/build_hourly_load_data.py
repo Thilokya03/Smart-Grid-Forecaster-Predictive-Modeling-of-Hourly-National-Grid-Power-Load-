@@ -15,6 +15,7 @@ DELETE_OLD_TIMESTAMPED_OUTPUTS = True
 DATE_COLUMN = "SETTLEMENT_DATE"
 PERIOD_COLUMN = "SETTLEMENT_PERIOD"
 LOAD_COLUMN = "ND"
+MIN_VALID_DEMAND_MW = 1
 
 
 def current_utc_hour() -> pd.Timestamp:
@@ -58,6 +59,17 @@ def convert_to_hourly(frame: pd.DataFrame) -> pd.DataFrame:
     cleaned = cleaned[cleaned[PERIOD_COLUMN].between(1, 48)].copy()
     cleaned["hour"] = ((cleaned[PERIOD_COLUMN] - 1) // 2).astype(int)
     cleaned["timestamp"] = cleaned[DATE_COLUMN] + pd.to_timedelta(cleaned["hour"], unit="h")
+
+    complete_hours = (
+        cleaned.groupby("timestamp")[LOAD_COLUMN]
+        .agg(periods="count", min_demand="min")
+        .reset_index()
+    )
+    complete_hours = complete_hours[
+        (complete_hours["periods"] == 2)
+        & (complete_hours["min_demand"] >= MIN_VALID_DEMAND_MW)
+    ]
+    cleaned = cleaned[cleaned["timestamp"].isin(complete_hours["timestamp"])].copy()
 
     hourly = (
         cleaned.groupby("timestamp", as_index=False)[LOAD_COLUMN]

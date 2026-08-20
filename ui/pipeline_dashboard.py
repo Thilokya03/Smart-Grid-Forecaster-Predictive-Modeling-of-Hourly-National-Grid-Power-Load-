@@ -1,9 +1,11 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import ast
 import html
 import json
 import mimetypes
+import re
 import subprocess
 import sys
 
@@ -13,7 +15,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
 PORT = 8765
-DASHBOARD_VERSION = "2026-08-19-ui-v10"
+DASHBOARD_VERSION = "2026-08-20-ui-v15"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 MASTER_PATH = Path("data") / "processed" / "master_training_data.csv"
@@ -21,6 +23,16 @@ WEATHER_FORECAST_PATH = Path("data") / "weather_runtime" / "rolling_forecast_wea
 FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
 HOLIDAYS_PATH = Path("data") / "external" / "uk_features" / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = Path("data") / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
+DOWNLOADS_DIR = Path.home() / "Downloads"
+PROPHET_TUNED_DIR = Path("artifacts") / "prophet_tuned" / "prophet_outputs"
+XGBOOST_OUTPUT_DIR = Path("artifacts") / "xgboost_model" / "xgboost_outputs"
+SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"
+
+NOTEBOOK_SOURCES = {
+    "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
+    "prophet_tuning": DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
+    "xgboost_comparison": DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
+}
 
 DATASETS = [
     ("Raw NESO demand update", Path("data") / "raw" / "neso" / f"demanddataupdate_{pd.Timestamp.today().year}.csv", "SETTLEMENT_DATE", "Demand"),
@@ -36,19 +48,28 @@ SUPPORT_DATASETS = [
 ]
 
 ARTIFACTS = [
-    ("Prophet v1 metrics", Path("artifacts") / "prophet" / "metrics.json"),
-    ("Prophet v1 predictions", Path("artifacts") / "prophet" / "validation_predictions.csv"),
-    ("Prophet v1 model", Path("artifacts") / "prophet" / "prophet_model.json"),
-    ("Prophet v2 metrics", Path("artifacts") / "prophet_v2" / "metrics.json"),
-    ("Prophet v2 predictions", Path("artifacts") / "prophet_v2" / "validation_predictions.csv"),
-    ("Prophet v2 model", Path("artifacts") / "prophet_v2" / "prophet_model.json"),
+    ("Prophet v1 baseline metrics", Path("artifacts") / "prophet_baseline" / "metrics.json"),
+    ("Prophet v1 baseline predictions", Path("artifacts") / "prophet_baseline" / "validation_predictions.csv"),
+    ("Prophet v1 baseline model", Path("artifacts") / "prophet_baseline" / "prophet_model.json"),
+    ("Prophet tuned config", PROPHET_TUNED_DIR / "best_prophet_config.json"),
+    ("Prophet tuned folds", PROPHET_TUNED_DIR / "prophet_tuning_folds.csv"),
+    ("XGBoost best config", XGBOOST_OUTPUT_DIR / "best_xgb_config.json"),
+    ("XGBoost tuning summary", XGBOOST_OUTPUT_DIR / "xgb_tuning_summary.csv"),
+    ("XGBoost tuning folds", XGBOOST_OUTPUT_DIR / "xgb_tuning_folds.csv"),
+    ("Prophet vs XGBoost CV", XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv"),
+    ("Prophet vs XGBoost folds", XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_by_fold.csv"),
+    ("XGBoost production model", Path("artifacts") / "xgboost" / "xgboost_model.json"),
+    ("SARIMAX CV summary", SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json"),
+    ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),
+    ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
+    ("SARIMAX order", SARIMAX_OUTPUT_DIR / "sarimax_order.json"),
 ]
 
 MODEL_OUTPUTS = {
     "prophet_v1": {
-        "label": "Prophet v1",
-        "metrics": Path("artifacts") / "prophet" / "metrics.json",
-        "predictions": Path("artifacts") / "prophet" / "validation_predictions.csv",
+        "label": "Prophet v1 Baseline",
+        "metrics": Path("artifacts") / "prophet_baseline" / "metrics.json",
+        "predictions": Path("artifacts") / "prophet_baseline" / "validation_predictions.csv",
     },
     "prophet_v2": {
         "label": "Prophet v2",
@@ -56,9 +77,14 @@ MODEL_OUTPUTS = {
         "predictions": Path("artifacts") / "prophet_v2" / "validation_predictions.csv",
     },
     "xgboost": {
-        "label": "XGBoost placeholder",
-        "metrics": Path("artifacts") / "xgboost" / "metrics.json",
+        "label": "XGBoost CV Winner",
+        "metrics": XGBOOST_OUTPUT_DIR / "best_xgb_config.json",
         "predictions": Path("artifacts") / "xgboost" / "validation_predictions.csv",
+    },
+    "sarimax": {
+        "label": "SARIMAX CV Candidate",
+        "metrics": SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json",
+        "predictions": SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv",
     },
 }
 
@@ -108,6 +134,18 @@ TASKS = {
     "train_prophet_v2": ("Train Prophet v2", [(Path("ml_training") / "train_prophet_model_v2.py", False)]),
 }
 
+PIPELINE_ACTIONS = [
+    ("update_all_live", True),
+    ("update_weather_forecast", False),
+    ("update_demand", False),
+    ("monthly_update", False),
+    ("sync_features", False),
+    ("build_load", False),
+    ("build_weather", False),
+    ("build_master", False),
+    ("build_forecast_features", False),
+]
+
 PERIOD_DAYS = {"last_day": 1, "last_week": 7, "last_month": 30, "last_3_months": 90}
 
 def project_path(relative_path: Path) -> Path:
@@ -144,11 +182,37 @@ def json_value(value):
     return value
 
 
+def round_value(value, digits: int = 4):
+    if pd.isna(value):
+        return ""
+    if isinstance(value, (int, float)):
+        return round(float(value), digits)
+    return value
+
+
 def display_text(value) -> str:
     if pd.isna(value):
         return ""
     text = str(value).strip()
     return "" if text.lower() == "nan" else text
+
+
+def load_json_file(relative_path: Path) -> dict:
+    path = project_path(relative_path)
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as file:
+        return json.load(file)
+
+
+def normalize_metric_payload(payload: dict) -> dict:
+    metrics = payload.get("metrics", payload)
+    return {
+        "mae": metrics.get("mae", metrics.get("mean_cv_mae", metrics.get("mean_mae", ""))),
+        "rmse": metrics.get("rmse", metrics.get("mean_cv_rmse", metrics.get("mean_rmse", ""))),
+        "mape": metrics.get("mape", metrics.get("mean_cv_mape", metrics.get("mean_mape", ""))),
+        "r2": metrics.get("r2", metrics.get("mean_cv_r2", metrics.get("mean_r2", ""))),
+    }
 
 
 def load_master() -> pd.DataFrame:
@@ -522,6 +586,480 @@ def forecast_inputs() -> dict:
     return payload
 
 
+def load_notebook(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    with path.open(encoding="utf-8") as file:
+        return json.load(file)
+
+
+def notebook_text_outputs(notebook: dict | None) -> list[str]:
+    if not notebook:
+        return []
+
+    chunks = []
+    for cell in notebook.get("cells", []):
+        for output in cell.get("outputs", []):
+            data = output.get("data", {})
+            for key in ["text/plain", "text/html"]:
+                value = data.get(key)
+                if isinstance(value, list):
+                    chunks.append("".join(value))
+                elif isinstance(value, str):
+                    chunks.append(value)
+            text = output.get("text")
+            if isinstance(text, list):
+                chunks.append("".join(text))
+            elif isinstance(text, str):
+                chunks.append(text)
+    return chunks
+
+
+def extract_prophet_best_config(notebook: dict | None) -> dict:
+    for text in notebook_text_outputs(notebook):
+        if "'model_type': 'Prophet'" not in text:
+            continue
+        start = text.find("{'model_type': 'Prophet'")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            continue
+        try:
+            return ast.literal_eval(text[start : end + 1])
+        except (SyntaxError, ValueError):
+            continue
+    return {}
+
+
+def extract_model_comparison(notebook: dict | None) -> list[dict]:
+    rows = []
+    pattern = re.compile(
+        r"^\s*\d+\s+(XGBoost|Prophet)\s+"
+        r"([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+"
+        r"([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s*$"
+    )
+    for text in notebook_text_outputs(notebook):
+        if "mean_mae" not in text or "worst_fold_rmse" not in text:
+            continue
+        for line in text.splitlines():
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                {
+                    "model": match.group(1),
+                    "mean_mae": round(float(match.group(2)), 4),
+                    "mean_rmse": round(float(match.group(3)), 4),
+                    "mean_mape": round(float(match.group(4)), 4),
+                    "mean_r2": round(float(match.group(5)), 4),
+                    "std_rmse": round(float(match.group(6)), 4),
+                    "worst_fold_rmse": round(float(match.group(7)), 4),
+                    "min_fold_r2": round(float(match.group(8)), 4),
+                }
+            )
+        if rows:
+            return rows
+    return rows
+
+
+def extract_fold_comparison(notebook: dict | None) -> list[dict]:
+    rows = []
+    pattern = re.compile(
+        r"^\s*\d+\s+(aug_2025|nov_2025|feb_2026|may_2026)\s+"
+        r"([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+"
+        r"([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+"
+        r"(XGBoost|Prophet)\s*$"
+    )
+    for text in notebook_text_outputs(notebook):
+        if "prophet_rmse" not in text or "xgb_rmse" not in text:
+            continue
+        for line in text.splitlines():
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                {
+                    "fold": match.group(1),
+                    "prophet_mae": round(float(match.group(2)), 4),
+                    "prophet_rmse": round(float(match.group(3)), 4),
+                    "prophet_mape": round(float(match.group(4)), 4),
+                    "prophet_r2": round(float(match.group(5)), 4),
+                    "xgb_mae": round(float(match.group(6)), 4),
+                    "xgb_rmse": round(float(match.group(7)), 4),
+                    "xgb_mape": round(float(match.group(8)), 4),
+                    "xgb_r2": round(float(match.group(9)), 4),
+                    "rmse_winner": match.group(10),
+                }
+            )
+        if rows:
+            return rows
+    return rows
+
+
+def notebook_comparison_rows(notebooks: dict[str, dict | None]) -> list[dict]:
+    prophet_training = notebooks["prophet_training"]
+    prophet_config = extract_prophet_best_config(notebooks["prophet_tuning"])
+    model_comparison = extract_model_comparison(notebooks["xgboost_comparison"])
+    xgb_row = next((row for row in model_comparison if row["model"] == "XGBoost"), {})
+    prophet_row = next((row for row in model_comparison if row["model"] == "Prophet"), {})
+    winner = min(model_comparison, key=lambda row: row["mean_rmse"])["model"] if model_comparison else "-"
+
+    training_outputs = notebook_text_outputs(prophet_training)
+    training_has_executed_outputs = bool(training_outputs)
+
+    return [
+        {
+            "notebook": "Prophet Training Updated",
+            "model_focus": "Prophet",
+            "comparison_role": "Full Prophet workflow and final-test/prod-retrain template",
+            "status": "Ready" if NOTEBOOK_SOURCES["prophet_training"].exists() else "Missing",
+            "usable_visuals": "Workflow source; no completed metric outputs detected" if not training_has_executed_outputs else "Notebook outputs detected",
+            "best_model": "-",
+            "mean_cv_mae": "-",
+            "mean_cv_rmse": "-",
+            "mean_cv_mape": "-",
+            "mean_cv_r2": "-",
+        },
+        {
+            "notebook": "Prophet Tuning Resume",
+            "model_focus": "Prophet",
+            "comparison_role": "Completed Prophet tuning result",
+            "status": "Ready" if prophet_config else "Missing outputs",
+            "usable_visuals": "Best Prophet config and CV metrics",
+            "best_model": prophet_config.get("variant", "-"),
+            "mean_cv_mae": round(prophet_config["mean_cv_mae"], 4) if "mean_cv_mae" in prophet_config else "-",
+            "mean_cv_rmse": round(prophet_config["mean_cv_rmse"], 4) if "mean_cv_rmse" in prophet_config else "-",
+            "mean_cv_mape": round(prophet_config["mean_cv_mape"], 4) if "mean_cv_mape" in prophet_config else "-",
+            "mean_cv_r2": round(prophet_config["mean_cv_r2"], 4) if "mean_cv_r2" in prophet_config else "-",
+        },
+        {
+            "notebook": "XGBoost Run and Comparison",
+            "model_focus": "XGBoost + Prophet",
+            "comparison_role": "Direct fair CV comparison across the same folds",
+            "status": "Ready" if model_comparison else "Missing outputs",
+            "usable_visuals": "Model comparison and fold-by-fold metrics",
+            "best_model": winner,
+            "mean_cv_mae": xgb_row.get("mean_mae", "-"),
+            "mean_cv_rmse": xgb_row.get("mean_rmse", "-"),
+            "mean_cv_mape": xgb_row.get("mean_mape", "-"),
+            "mean_cv_r2": xgb_row.get("mean_r2", "-"),
+        },
+    ]
+
+
+def notebook_visuals() -> dict:
+    notebooks = {key: load_notebook(path) for key, path in NOTEBOOK_SOURCES.items()}
+    source_rows = []
+    for key, path in NOTEBOOK_SOURCES.items():
+        modified_uk, modified_sl = modified_time_pair(path) if path.exists() else ("-", "-")
+        source_rows.append(
+            {
+                "name": key.replace("_", " ").title(),
+                "path": str(path),
+                "status": "Ready" if path.exists() else "Missing",
+                "size": format_size(path.stat().st_size) if path.exists() else "-",
+                "modified_uk": modified_uk,
+                "modified_sl": modified_sl,
+            }
+        )
+
+    prophet_config = extract_prophet_best_config(notebooks["prophet_tuning"])
+    comparison_rows = model_cv_comparison_rows() or extract_model_comparison(notebooks["xgboost_comparison"])
+    fold_rows = extract_fold_comparison(notebooks["xgboost_comparison"])
+    notebook_rows = notebook_comparison_rows(notebooks)
+
+    winner = min(comparison_rows, key=lambda row: row["mean_rmse"])["model"] if comparison_rows else "-"
+    prophet_cv_rmse = prophet_config.get("mean_cv_rmse", "-")
+
+    kpis = [
+        {"label": "CV Winner", "value": winner},
+        {"label": "Prophet Best CV RMSE", "value": round(prophet_cv_rmse, 4) if isinstance(prophet_cv_rmse, float) else prophet_cv_rmse},
+        {"label": "Comparison Rows", "value": f"{len(comparison_rows):,}"},
+        {"label": "Fold Rows", "value": f"{len(fold_rows):,}"},
+    ]
+
+    if prophet_config:
+        kpis.append({"label": "Prophet Variant", "value": prophet_config.get("variant", "-")})
+        kpis.append({"label": "Prophet Mode", "value": prophet_config.get("params", {}).get("seasonality_mode", "-")})
+
+    return {
+        "sources": source_rows,
+        "notebook_rows": notebook_rows,
+        "kpis": kpis,
+        "prophet_config": prophet_config,
+        "comparison_rows": comparison_rows,
+        "comparison_points": comparison_rows,
+        "fold_rows": fold_rows,
+        "fold_points": fold_rows,
+        "message": "CV leaderboard and fold charts are built from saved model artifacts and notebook output files.",
+    }
+
+
+def xgboost_visuals() -> dict:
+    summary_path = project_path(XGBOOST_OUTPUT_DIR / "xgb_tuning_summary.csv")
+    folds_path = project_path(XGBOOST_OUTPUT_DIR / "xgb_tuning_folds.csv")
+    config_path = project_path(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")
+
+    config = load_json_file(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")
+    summary = pd.read_csv(summary_path) if summary_path.exists() else pd.DataFrame()
+    folds = pd.read_csv(folds_path) if folds_path.exists() else pd.DataFrame()
+    best_config_id = summary.iloc[0]["config_id"] if not summary.empty else ""
+    best_folds = folds[folds["config_id"] == best_config_id].copy() if not folds.empty else pd.DataFrame()
+
+    tuning_rows = []
+    tuning_points = []
+    if not summary.empty:
+        for _, row in summary.iterrows():
+            item = {
+                "config_id": row["config_id"],
+                "mean_mae": round(float(row["mean_mae"]), 4),
+                "mean_rmse": round(float(row["mean_rmse"]), 4),
+                "mean_mape": round(float(row["mean_mape"]), 4),
+                "mean_r2": round(float(row["mean_r2"]), 4),
+                "std_rmse": round(float(row["std_rmse"]), 4),
+                "worst_fold_rmse": round(float(row["worst_fold_rmse"]), 4),
+                "folds_completed": int(row["folds_completed"]),
+            }
+            tuning_rows.append(item)
+            tuning_points.append(item)
+
+    fold_rows = []
+    fold_points = []
+    if not best_folds.empty:
+        for _, row in best_folds.iterrows():
+            item = {
+                "fold": row["fold"],
+                "mae": round(float(row["mae"]), 4),
+                "rmse": round(float(row["rmse"]), 4),
+                "mape": round(float(row["mape"]), 4),
+                "r2": round(float(row["r2"]), 4),
+            }
+            fold_rows.append(item)
+            fold_points.append(item)
+
+    params = config.get("params", {})
+    feature_count = len(config.get("features", []))
+    kpis = [
+        {"label": "Best XGBoost Config", "value": best_config_id or "-"},
+        {"label": "Feature Count", "value": feature_count if feature_count else "-"},
+        {"label": "Mean CV RMSE", "value": round_value(config.get("mean_cv_rmse"))},
+        {"label": "Mean CV MAE", "value": round_value(config.get("mean_cv_mae"))},
+        {"label": "Mean CV MAPE", "value": round_value(config.get("mean_cv_mape"))},
+        {"label": "Mean CV R2", "value": round_value(config.get("mean_cv_r2"))},
+    ]
+
+    param_rows = [{"parameter": key, "value": value} for key, value in params.items()]
+
+    return {
+        "kpis": kpis,
+        "tuning_rows": tuning_rows,
+        "tuning_points": tuning_points,
+        "fold_rows": fold_rows,
+        "fold_points": fold_points,
+        "param_rows": param_rows,
+        "features": config.get("features", []),
+        "message": (
+            "XGBoost visuals use CV artifacts from artifacts/xgboost_model/xgboost_outputs. "
+            "A production prediction curve needs xgboost_model.json and validation_predictions.csv."
+        ),
+    }
+
+
+def prophet_tuned_visuals() -> dict:
+    summary_path = project_path(PROPHET_TUNED_DIR / "prophet_tuning_summary.csv")
+    folds_path = project_path(PROPHET_TUNED_DIR / "prophet_tuning_folds.csv")
+    config = load_json_file(PROPHET_TUNED_DIR / "best_prophet_config.json")
+    summary = pd.read_csv(summary_path) if summary_path.exists() else pd.DataFrame()
+    folds = pd.read_csv(folds_path) if folds_path.exists() else pd.DataFrame()
+    best_config_id = summary.iloc[0]["config_id"] if not summary.empty else ""
+    best_folds = folds[folds["config_id"] == best_config_id].copy() if not folds.empty else pd.DataFrame()
+
+    tuning_rows = []
+    if not summary.empty:
+        for _, row in summary.iterrows():
+            tuning_rows.append(
+                {
+                    "config_id": row["config_id"],
+                    "variant": row["variant"],
+                    "seasonality_mode": row["seasonality_mode"],
+                    "mean_mae": round(float(row["mean_mae"]), 4),
+                    "mean_rmse": round(float(row["mean_rmse"]), 4),
+                    "mean_mape": round(float(row["mean_mape"]), 4),
+                    "mean_r2": round(float(row["mean_r2"]), 4),
+                    "std_rmse": round(float(row["std_rmse"]), 4),
+                    "folds_completed": int(row["folds_completed"]),
+                }
+            )
+
+    fold_rows = []
+    if not best_folds.empty:
+        for _, row in best_folds.iterrows():
+            fold_rows.append(
+                {
+                    "fold": row["fold"],
+                    "mae": round(float(row["mae"]), 4),
+                    "rmse": round(float(row["rmse"]), 4),
+                    "mape": round(float(row["mape"]), 4),
+                    "r2": round(float(row["r2"]), 4),
+                }
+            )
+
+    params = config.get("params", {})
+    kpis = [
+        {"label": "Best Prophet Config", "value": best_config_id or "-"},
+        {"label": "Variant", "value": config.get("variant", "-")},
+        {"label": "Mean CV RMSE", "value": round_value(config.get("mean_cv_rmse"))},
+        {"label": "Mean CV MAE", "value": round_value(config.get("mean_cv_mae"))},
+        {"label": "Mean CV MAPE", "value": round_value(config.get("mean_cv_mape"))},
+        {"label": "Mean CV R2", "value": round_value(config.get("mean_cv_r2"))},
+    ]
+
+    return {
+        "kpis": kpis,
+        "tuning_rows": tuning_rows,
+        "tuning_points": tuning_rows,
+        "fold_rows": fold_rows,
+        "fold_points": fold_rows,
+        "param_rows": [{"parameter": key, "value": value} for key, value in params.items()],
+        "regressor_rows": [{"feature": feature} for feature in config.get("regressors", [])],
+        "message": "Prophet tuned visuals use CV artifacts from artifacts/prophet_tuned/prophet_outputs.",
+    }
+
+
+def sarimax_visuals() -> dict:
+    summary = load_json_file(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")
+    order = load_json_file(SARIMAX_OUTPUT_DIR / "sarimax_order.json")
+    folds_path = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv")
+    folds = pd.read_csv(folds_path) if folds_path.exists() else pd.DataFrame()
+
+    fold_rows = []
+    if not folds.empty:
+        for _, row in folds.iterrows():
+            fold_rows.append(
+                {
+                    "fold": row["fold"],
+                    "mae": round(float(row["mae"]), 4),
+                    "rmse": round(float(row["rmse"]), 4),
+                    "mape": round(float(row["mape"]), 4),
+                    "r2": round(float(row["r2"]), 4),
+                    "fit_seconds": round(float(row["fit_seconds"]), 1),
+                }
+            )
+
+    kpis = [
+        {"label": "SARIMAX Order", "value": str(tuple(summary.get("order", []))) if summary else "-"},
+        {"label": "Seasonal Order", "value": str(tuple(summary.get("seasonal_order", []))) if summary else "-"},
+        {"label": "Mean CV RMSE", "value": round_value(summary.get("mean_rmse")) if summary else "-"},
+        {"label": "Mean CV MAE", "value": round_value(summary.get("mean_mae")) if summary else "-"},
+        {"label": "Mean CV MAPE", "value": round_value(summary.get("mean_mape")) if summary else "-"},
+        {"label": "Mean CV R2", "value": round_value(summary.get("mean_r2")) if summary else "-"},
+    ]
+
+    return {
+        "kpis": kpis,
+        "fold_rows": fold_rows,
+        "fold_points": fold_rows,
+        "exog_rows": [{"feature": feature} for feature in summary.get("exog_cols", order.get("exog_cols", []))],
+        "summary": summary,
+        "message": "SARIMAX visuals use CV artifacts from artifacts/sarimax/sarimax_outputs.",
+    }
+
+
+def model_cv_comparison_rows() -> list[dict]:
+    rows = []
+    comparison_path = project_path(XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv")
+    if comparison_path.exists():
+        comparison = pd.read_csv(comparison_path)
+        for _, row in comparison.iterrows():
+            rows.append(
+                {
+                    "model": row["model"],
+                    "mean_mae": round(float(row["mean_mae"]), 4),
+                    "mean_rmse": round(float(row["mean_rmse"]), 4),
+                    "mean_mape": round(float(row["mean_mape"]), 4),
+                    "mean_r2": round(float(row["mean_r2"]), 4),
+                    "std_rmse": round(float(row["std_rmse"]), 4),
+                    "worst_fold_rmse": round(float(row["worst_fold_rmse"]), 4),
+                    "min_fold_r2": round(float(row["min_fold_r2"]), 4),
+                }
+            )
+
+    sarimax_summary = load_json_file(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")
+    if sarimax_summary:
+        rows.append(
+            {
+                "model": "SARIMAX",
+                "mean_mae": round(float(sarimax_summary["mean_mae"]), 4),
+                "mean_rmse": round(float(sarimax_summary["mean_rmse"]), 4),
+                "mean_mape": round(float(sarimax_summary["mean_mape"]), 4),
+                "mean_r2": round(float(sarimax_summary["mean_r2"]), 4),
+                "std_rmse": round(float(sarimax_summary["std_rmse"]), 4),
+                "worst_fold_rmse": round(float(sarimax_summary["worst_fold_rmse"]), 4),
+                "min_fold_r2": round(float(sarimax_summary["min_fold_r2"]), 4),
+            }
+        )
+
+    return sorted(rows, key=lambda row: row["mean_rmse"])
+
+
+def ml_model_registry() -> dict:
+    prophet_baseline_model = project_path(Path("artifacts") / "prophet_baseline" / "prophet_model.json")
+    prophet_tuned_config = project_path(PROPHET_TUNED_DIR / "best_prophet_config.json")
+    xgb_config = project_path(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")
+    xgb_model = project_path(Path("artifacts") / "xgboost" / "xgboost_model.json")
+    sarimax_summary = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")
+
+    return {
+        "models": [
+            {
+                "id": "prophet_baseline",
+                "label": "Prophet v1 Baseline",
+                "status": "servable" if prophet_baseline_model.exists() else "missing_model",
+                "model_path": str(Path("artifacts") / "prophet_baseline" / "prophet_model.json"),
+                "metrics_path": str(Path("artifacts") / "prophet_baseline" / "metrics.json"),
+            },
+            {
+                "id": "prophet_tuned",
+                "label": "Prophet Tuned CV Candidate",
+                "status": "config_ready" if prophet_tuned_config.exists() else "missing_config",
+                "config_path": str(PROPHET_TUNED_DIR / "best_prophet_config.json"),
+                "model_path": str(Path("artifacts") / "prophet_tuned" / "prophet_model.json"),
+            },
+            {
+                "id": "xgboost",
+                "label": "XGBoost CV Winner",
+                "status": "servable" if xgb_model.exists() else ("config_ready" if xgb_config.exists() else "missing_config"),
+                "config_path": str(XGBOOST_OUTPUT_DIR / "best_xgb_config.json"),
+                "model_path": str(Path("artifacts") / "xgboost" / "xgboost_model.json"),
+            },
+            {
+                "id": "sarimax",
+                "label": "SARIMAX CV Candidate",
+                "status": "config_ready" if sarimax_summary.exists() else "missing_config",
+                "summary_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json"),
+                "predictions_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
+            },
+        ]
+    }
+
+
+def ml_forecast_payload(query: dict[str, list[str]]) -> dict:
+    model_id = query.get("model", ["xgboost"])[0]
+    registry = ml_model_registry()["models"]
+    model = next((item for item in registry if item["id"] == model_id), None)
+    if model is None:
+        return {"status": "error", "message": f"Unknown model: {model_id}", "models": registry}
+
+    return {
+        "status": "not_ready",
+        "model": model,
+        "forecast": [],
+        "message": (
+            "Backend route is wired, but production forecast serving still needs exported production model files "
+            "and a feature builder for the requested forecast horizon."
+        ),
+    }
+
+
 def model_validation(model_key: str) -> dict:
     model = MODEL_OUTPUTS.get(model_key, MODEL_OUTPUTS["prophet_v1"])
     metrics_path = project_path(model["metrics"])
@@ -531,17 +1069,28 @@ def model_validation(model_key: str) -> dict:
     if metrics_path.exists():
         with metrics_path.open(encoding="utf-8") as file:
             metrics = json.load(file)
+    normalized_metrics = normalize_metric_payload(metrics)
 
     if not predictions_path.exists():
         return {
             "model": model["label"],
             "status": "Missing",
-            "metrics": metrics.get("metrics", {}),
+            "metrics": normalized_metrics,
             "points": [],
             "message": f"Prediction file not found: {model['predictions']}",
         }
 
     frame = pd.read_csv(predictions_path, low_memory=False)
+    rename_columns = {
+        "timestamp": "ds",
+        "actual_demand_mw": "y",
+        "predicted_demand_mw": "yhat",
+    }
+    frame = frame.rename(columns={key: value for key, value in rename_columns.items() if key in frame.columns})
+    if "yhat_lower" not in frame.columns and "yhat" in frame.columns:
+        frame["yhat_lower"] = frame["yhat"]
+    if "yhat_upper" not in frame.columns and "yhat" in frame.columns:
+        frame["yhat_upper"] = frame["yhat"]
     frame["ds"] = pd.to_datetime(frame["ds"], errors="coerce")
     frame = frame.dropna(subset=["ds"]).sort_values("ds")
     chart = downsample_model_predictions(frame)
@@ -549,7 +1098,7 @@ def model_validation(model_key: str) -> dict:
     return {
         "model": model["label"],
         "status": "Ready",
-        "metrics": metrics.get("metrics", metrics),
+        "metrics": normalized_metrics,
         "points": [
             {
                 "timestamp": row["ds"].strftime("%Y-%m-%d %H:%M"),
@@ -619,6 +1168,25 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
     if path == "/api/model-validation":
         model = query.get("model", ["prophet_v1"])[0]
         return model_validation(model)
+    if path == "/api/notebook-visuals":
+        return notebook_visuals()
+    if path == "/api/prophet-tuned-visuals":
+        return prophet_tuned_visuals()
+    if path == "/api/xgboost-visuals":
+        return xgboost_visuals()
+    if path == "/api/sarimax-visuals":
+        return sarimax_visuals()
+    if path == "/api/v1/forecast/ml/models":
+        return ml_model_registry()
+    if path == "/api/v1/forecast/ml/comparison":
+        return {
+            "comparison": model_cv_comparison_rows(),
+            "prophet_tuned": prophet_tuned_visuals(),
+            "xgboost": xgboost_visuals(),
+            "sarimax": sarimax_visuals(),
+        }
+    if path == "/api/v1/forecast/ml":
+        return ml_forecast_payload(query)
     if path == "/api/last-output":
         return {"output": DashboardHandler.last_output}
     raise KeyError(path)
@@ -627,6 +1195,8 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
 def read_static_file(path: str) -> tuple[bytes, str]:
     if path in {"", "/"}:
         file_path = STATIC_DIR / "index.html"
+    elif path in {"/model-comparison", "/model-comparison/"}:
+        file_path = STATIC_DIR / "model_comparison.html"
     elif path.startswith("/static/"):
         file_path = STATIC_DIR / path.removeprefix("/static/")
     else:
@@ -642,11 +1212,11 @@ def read_static_file(path: str) -> tuple[bytes, str]:
 
 def html_page(last_output: str = "") -> str:
     task_buttons = "".join(
-        "<form method='post' action='/run'>"
+        f"<form class='{'task-primary' if is_primary else ''}' method='post' action='/run'>"
         f"<input type='hidden' name='task' value='{html.escape(key)}'>"
-        f"<button type='submit'>{html.escape(label)}</button>"
+        f"<button type='submit'>{html.escape(TASKS[key][0])}</button>"
         "</form>"
-        for key, (label, _) in TASKS.items()
+        for key, is_primary in PIPELINE_ACTIONS
     )
     output_text = html.escape(last_output) if last_output else "No command has been run from this UI yet."
 
@@ -668,7 +1238,7 @@ def html_page(last_output: str = "") -> str:
     main {{ padding: 22px; min-width: 0; }}
     header {{ margin-bottom: 16px; }}
     header h2 {{ margin: 0 0 6px; font-size: 26px; }}
-    header p {{ margin: 0; color: #52616f; }}
+    header p, #notebookMessage {{ margin: 0 0 10px; color: #52616f; }}
     section {{ background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 16px; margin-bottom: 16px; min-width: 0; overflow: hidden; }}
     section h3 {{ margin: 0 0 12px; font-size: 17px; }}
     .toolbar {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }}
@@ -693,13 +1263,16 @@ def html_page(last_output: str = "") -> str:
     .event b {{ display: block; margin-bottom: 4px; }}
     .event small {{ color: #627d98; }}
     .task-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
+    .task-primary {{ grid-column: span 2; }}
+    .task-primary button {{ background: #0b5cab; border-color: #0b5cab; color: #fff; min-height: 58px; font-size: 17px; box-shadow: 0 8px 18px rgba(11, 92, 171, 0.18); }}
+    .task-primary button:hover {{ background: #084b8d; border-color: #084b8d; }}
     form {{ margin: 0; }}
     form button {{ width: 100%; }}
     pre {{ white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: 360px; overflow: auto; background: #102a43; color: #f0f4f8; border-radius: 6px; padding: 12px; font-size: 13px; }}
     .pill {{ display: inline-block; border-radius: 999px; padding: 3px 8px; font-weight: 700; font-size: 12px; }}
     .ready {{ background: #d1e7dd; color: #0f5132; }}
     .missing {{ background: #f8d7da; color: #842029; }}
-    @media (max-width: 850px) {{ .shell {{ grid-template-columns: 1fr; }} aside {{ height: auto; position: static; }} main {{ padding: 12px; }} svg {{ height: 230px; }} }}
+    @media (max-width: 850px) {{ .shell {{ grid-template-columns: 1fr; }} aside {{ height: auto; position: static; }} main {{ padding: 12px; }} .task-primary {{ grid-column: span 1; }} svg {{ height: 230px; }} }}
   </style>
 </head>
 <body>
@@ -712,6 +1285,8 @@ def html_page(last_output: str = "") -> str:
         <a href="#events">Special Days</a>
         <a href="#weatherForecast">Weather Forecast</a>
         <a href="#forecastModels">Forecast Models</a>
+        <a href="#modelComparison">Model Comparison</a>
+        <a href="#notebookModels">Notebook Logs</a>
         <a href="#pipeline">Pipeline</a>
         <a href="#models">Models</a>
       </nav>
@@ -734,14 +1309,58 @@ def html_page(last_output: str = "") -> str:
       <section id="weatherForecast"><h3>Weather Forecast Ahead</h3><p id="forecastRange"></p><div class="chart-card"><h4>Forecast Temperature / Rain / Cloud</h4><div id="forecastChart"></div></div></section>
       <section id="forecastModels">
         <h3>Forecast Model Visualizer</h3>
+        <p class="section-note">This chart uses local prediction artifact files. Use Model Comparison for CV leaderboard and tuning results.</p>
         <div class="toolbar">
-          <button data-model="prophet_v1" class="model-active">Prophet v1</button>
+          <button data-model="prophet_v1" class="model-active">Prophet v1 Baseline</button>
           <button data-model="prophet_v2">Prophet v2</button>
           <button data-model="xgboost">XGBoost</button>
+          <button data-model="sarimax">SARIMAX</button>
         </div>
         <div id="modelMetrics" class="grid"></div>
         <p id="modelMessage"></p>
         <div class="chart-card"><h4>Actual vs Predicted Demand</h4><div id="modelChart"></div></div>
+      </section>
+      <section id="modelComparison">
+        <h3>Model Comparison</h3>
+        <p id="notebookMessage"></p>
+        <div id="notebookKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>CV Leaderboard Metrics</h4><div id="notebookComparisonChart"></div></div>
+          <div class="chart-card"><h4>Prophet vs XGBoost Fold RMSE</h4><div id="notebookFoldChart"></div></div>
+        </div>
+        <h4>Model CV Leaderboard</h4>
+        <div class="table-wrap"><table id="notebookComparisonTable"></table></div>
+        <h4>Prophet vs XGBoost Fold-by-Fold Comparison</h4>
+        <div class="table-wrap"><table id="notebookFoldTable"></table></div>
+        <h4>XGBoost Tuning Results</h4>
+        <p id="xgboostMessage"></p>
+        <div id="xgboostKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>XGBoost Config RMSE</h4><div id="xgboostTuningChart"></div></div>
+          <div class="chart-card"><h4>Best XGBoost Fold Metrics</h4><div id="xgboostFoldChart"></div></div>
+        </div>
+        <h4>XGBoost Tuned Configurations</h4>
+        <div class="table-wrap"><table id="xgboostTuningTable"></table></div>
+        <h4>Best XGBoost Parameters</h4>
+        <div class="table-wrap"><table id="xgboostParamTable"></table></div>
+        <h4>SARIMAX Results</h4>
+        <p id="sarimaxMessage"></p>
+        <div id="sarimaxKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>SARIMAX Fold Metrics</h4><div id="sarimaxFoldChart"></div></div>
+        </div>
+        <h4>SARIMAX Fold Table</h4>
+        <div class="table-wrap"><table id="sarimaxFoldTable"></table></div>
+        <h4>SARIMAX Exogenous Features</h4>
+        <div class="table-wrap"><table id="sarimaxFeatureTable"></table></div>
+      </section>
+      <section id="notebookModels">
+        <h3>Notebook Logs & Source Evidence</h3>
+        <p class="section-note">Training notebooks are treated as evidence files. Their extracted metrics are shown in Model Comparison.</p>
+        <h4>Notebook Comparison</h4>
+        <div class="table-wrap"><table id="notebookRunTable"></table></div>
+        <h4>Notebook Sources</h4>
+        <div class="table-wrap"><table id="notebookSourceTable"></table></div>
       </section>
       <section id="pipeline"><h3>Pipeline Actions</h3><div class="task-grid">{task_buttons}</div></section>
       <section><h3>Dataset Files</h3><div class="table-wrap"><table id="datasetTable"></table></div></section>
@@ -809,7 +1428,27 @@ def html_page(last_output: str = "") -> str:
         {{key:"upper", label:"Upper", color:"#64748b"}}
       ], "timestamp");
     }}
-    async function refreshAll() {{ await Promise.all([loadSummary(), loadKpis(), loadCharts(), loadEvents(), loadForecast(), loadModelValidation()]); }}
+    async function loadNotebookVisuals() {{
+      const data = await fetchJson("/api/notebook-visuals");
+      document.getElementById("notebookMessage").textContent = data.message || "";
+      document.getElementById("notebookKpis").innerHTML = (data.kpis || []).map(item => `<div class="card"><span>${{item.label}}</span><strong>${{item.value}}</strong></div>`).join("");
+      lineChart("notebookComparisonChart", data.comparison_points || [], [{{key:"mean_rmse", label:"Mean RMSE", color:"#0b5cab"}}, {{key:"mean_mae", label:"Mean MAE", color:"#c2410c"}}], "model");
+      lineChart("notebookFoldChart", data.fold_points || [], [{{key:"prophet_rmse", label:"Prophet RMSE", color:"#64748b"}}, {{key:"xgb_rmse", label:"XGBoost RMSE", color:"#0f766e"}}], "fold");
+      renderTable("notebookRunTable", data.notebook_rows || [], [{{key:"notebook", label:"Notebook"}}, {{key:"model_focus", label:"Model Focus"}}, {{key:"comparison_role", label:"Comparison Role"}}, {{key:"status", label:"Status"}}, {{key:"best_model", label:"Best / Selected"}}, {{key:"mean_cv_rmse", label:"Mean CV RMSE"}}]);
+      renderTable("notebookComparisonTable", data.comparison_rows || [], [{{key:"model", label:"Model"}}, {{key:"mean_mae", label:"Mean MAE"}}, {{key:"mean_rmse", label:"Mean RMSE"}}, {{key:"mean_mape", label:"Mean MAPE"}}, {{key:"mean_r2", label:"Mean R2"}}]);
+      renderTable("notebookFoldTable", data.fold_rows || [], [{{key:"fold", label:"Fold"}}, {{key:"prophet_rmse", label:"Prophet RMSE"}}, {{key:"xgb_rmse", label:"XGBoost RMSE"}}, {{key:"rmse_winner", label:"RMSE Winner"}}]);
+      renderTable("notebookSourceTable", data.sources || [], [{{key:"name", label:"Notebook"}}, {{key:"path", label:"Path"}}, {{key:"status", label:"Status"}}, {{key:"size", label:"Size"}}]);
+    }}
+    async function loadXgboostVisuals() {{
+      const data = await fetchJson("/api/xgboost-visuals");
+      document.getElementById("xgboostMessage").textContent = data.message || "";
+      document.getElementById("xgboostKpis").innerHTML = (data.kpis || []).map(item => `<div class="card"><span>${{item.label}}</span><strong>${{item.value}}</strong></div>`).join("");
+      lineChart("xgboostTuningChart", data.tuning_points || [], [{{key:"mean_rmse", label:"Mean RMSE", color:"#0b5cab"}}, {{key:"worst_fold_rmse", label:"Worst Fold RMSE", color:"#c2410c"}}], "config_id");
+      lineChart("xgboostFoldChart", data.fold_points || [], [{{key:"rmse", label:"RMSE", color:"#0f766e"}}, {{key:"mae", label:"MAE", color:"#7c3aed"}}], "fold");
+      renderTable("xgboostTuningTable", data.tuning_rows || [], [{{key:"config_id", label:"Config"}}, {{key:"mean_rmse", label:"Mean RMSE"}}, {{key:"mean_mae", label:"Mean MAE"}}, {{key:"mean_r2", label:"Mean R2"}}]);
+      renderTable("xgboostParamTable", data.param_rows || [], [{{key:"parameter", label:"Parameter"}}, {{key:"value", label:"Value"}}]);
+    }}
+    async function refreshAll() {{ await Promise.all([loadSummary(), loadKpis(), loadCharts(), loadEvents(), loadForecast(), loadModelValidation(), loadNotebookVisuals(), loadXgboostVisuals()]); }}
     document.querySelectorAll("[data-period]").forEach(button => {{ button.addEventListener("click", async () => {{ selectedPeriod = button.dataset.period; document.querySelectorAll("[data-period]").forEach(b => b.classList.toggle("active", b === button)); await Promise.all([loadKpis(), loadCharts()]); }}); }});
     document.querySelectorAll("[data-model]").forEach(button => {{ button.addEventListener("click", async () => {{ selectedModel = button.dataset.model; document.querySelectorAll("[data-model]").forEach(b => b.classList.toggle("model-active", b === button)); await loadModelValidation(); }}); }});
     refreshAll().catch(error => console.error(error));

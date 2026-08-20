@@ -10,10 +10,13 @@ aside { background: #102a43; color: #eaf2f8; padding: 22px 16px; position: stick
 aside h1 { font-size: 20px; line-height: 1.2; margin: 0 0 18px; }
 nav a { display: block; color: #d9e8f5; text-decoration: none; padding: 9px 10px; border-radius: 6px; margin-bottom: 4px; font-size: 14px; }
 nav a:hover { background: #243b53; }
+.primary-link { display: inline-block; border: 1px solid #0b5cab; background: #0b5cab; color: #fff; text-decoration: none; padding: 11px 14px; border-radius: 6px; font-weight: 700; }
+.primary-link:hover { background: #084b8d; border-color: #084b8d; }
 main { padding: 22px; min-width: 0; }
 header { margin-bottom: 16px; }
 header h2 { margin: 0 0 6px; font-size: 26px; }
-header p, #forecastRange, #modelMessage { margin: 0 0 10px; color: #52616f; }
+header p, #forecastRange, #modelMessage, #notebookMessage, .section-note { margin: 0 0 10px; color: #52616f; }
+.section-note { font-size: 14px; }
 section { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 16px; margin-bottom: 16px; min-width: 0; overflow: hidden; }
 section h3 { margin: 0 0 12px; font-size: 17px; }
 section h4 { margin: 14px 0 8px; font-size: 14px; color: #334e68; }
@@ -29,6 +32,24 @@ section h4 { margin: 14px 0 8px; font-size: 14px; color: #334e68; }
 .weather-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px; margin-top: 12px; }
 .chart-card { border: 1px solid #edf2f7; border-radius: 8px; padding: 12px; min-width: 0; }
 .chart-card h4 { margin: 0 0 8px; font-size: 14px; color: #334e68; }
+.chart-wrap { position: relative; min-width: 0; }
+.chart-tooltip {
+  position: absolute;
+  z-index: 5;
+  display: none;
+  min-width: 190px;
+  max-width: min(320px, calc(100vw - 48px));
+  padding: 9px 10px;
+  border: 1px solid #bcccdc;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 18px rgba(16, 42, 67, 0.14);
+  color: #102a43;
+  font-size: 12px;
+  pointer-events: none;
+}
+.chart-tooltip b { display: block; margin-bottom: 6px; font-size: 12px; }
+.chart-tooltip div { display: flex; justify-content: space-between; gap: 12px; margin-top: 3px; }
 svg { display: block; width: 100%; height: 280px; overflow: visible; }
 .table-wrap { width: 100%; overflow-x: auto; border: 1px solid #edf2f7; border-radius: 6px; }
 table { width: 100%; min-width: 1320px; border-collapse: collapse; table-layout: auto; font-size: 13px; }
@@ -41,6 +62,16 @@ td:nth-last-child(1), td:nth-last-child(2), th:nth-last-child(1), th:nth-last-ch
 .event b { display: block; margin-bottom: 4px; }
 .event small { color: #627d98; }
 .task-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.task-primary { grid-column: span 2; }
+.task-primary button {
+  background: #0b5cab;
+  border-color: #0b5cab;
+  color: #fff;
+  min-height: 58px;
+  font-size: 17px;
+  box-shadow: 0 8px 18px rgba(11, 92, 171, 0.18);
+}
+.task-primary button:hover { background: #084b8d; border-color: #084b8d; }
 form { margin: 0; }
 form button { width: 100%; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: 360px; overflow: auto; background: #102a43; color: #f0f4f8; border-radius: 6px; padding: 12px; font-size: 13px; }
@@ -52,5 +83,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; ma
   aside { height: auto; position: static; }
   main { padding: 12px; }
   .weather-chart-grid { grid-template-columns: 1fr; }
+  .task-primary { grid-column: span 1; }
   svg { height: 230px; }
 }
