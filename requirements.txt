@@ -1,0 +1,10 @@
+# --- Core API framework ---
+fastapi[standard]
+uvicorn[standard]==0.32.1 
+pandas 
+requests
+tqdm 
+numpy
+scikit-learn
+xgboost
+pmdarima
