@@ -1,3 +1,64 @@
+<<<<<<< HEAD
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Notebook/runtime caches
+.ipynb_checkpoints/
+.matplotlib/
+
+# Local environment files
+.env
+.env.*
+
+# Generated datasets and runtime data
+data/**/*.csv
+data/**/*.db
+data/**/*.sqlite
+data/**/*.sqlite3
+data/**/*.json
+data/**/*.download
+data/**/*.txt
+
+# Root-level generated data, kept for backward compatibility if recreated
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+
+# Model artifacts and reports
+artifacts/
+mlruns/
+*.pkl
+*.pickle
+*.joblib
+*.onnx
+
+# Logs
+*.log
+logs/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Tracked processed dataset for model training/submission
+!data/processed/master_training_data.csv
+=======
 .venv
 
 data/
+>>>>>>> origin/dev

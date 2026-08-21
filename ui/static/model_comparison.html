@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model Comparison - UK Smart Grid Forecaster</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v15">
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <h1>UK Smart Grid Forecaster</h1>
+      <nav>
+        <a href="/">Dashboard</a>
+        <a href="#leaderboard">Leaderboard</a>
+        <a href="#prophetTuned">Prophet Tuned</a>
+        <a href="#xgboostResults">XGBoost</a>
+        <a href="#sarimaxResults">SARIMAX</a>
+        <a href="#notebookEvidence">Notebook Evidence</a>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <h2>Model Comparison</h2>
+        <p>Prophet tuned, XGBoost, and SARIMAX comparison from saved CV artifacts. Version: 2026-08-20-ui-v15.</p>
+      </header>
+
+      <section id="leaderboard">
+        <h3>CV Leaderboard</h3>
+        <p id="comparisonMessage"></p>
+        <div id="comparisonKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Model RMSE / MAE</h4><div id="leaderboardChart"></div></div>
+          <div class="chart-card"><h4>Prophet vs XGBoost Fold RMSE</h4><div id="foldComparisonChart"></div></div>
+        </div>
+        <h4>Model CV Leaderboard</h4>
+        <div class="table-wrap"><table id="leaderboardTable"></table></div>
+        <h4>Prophet vs XGBoost Fold-by-Fold</h4>
+        <div class="table-wrap"><table id="foldComparisonTable"></table></div>
+      </section>
+
+      <section id="prophetTuned">
+        <h3>Prophet Tuned</h3>
+        <p id="prophetMessage"></p>
+        <div id="prophetKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Prophet Config RMSE</h4><div id="prophetTuningChart"></div></div>
+          <div class="chart-card"><h4>Best Prophet Fold Metrics</h4><div id="prophetFoldChart"></div></div>
+        </div>
+        <h4>Prophet Tuned Configurations</h4>
+        <div class="table-wrap"><table id="prophetTuningTable"></table></div>
+        <h4>Best Prophet Parameters</h4>
+        <div class="table-wrap"><table id="prophetParamTable"></table></div>
+        <h4>Prophet Regressors</h4>
+        <div class="table-wrap"><table id="prophetRegressorTable"></table></div>
+      </section>
+
+      <section id="xgboostResults">
+        <h3>XGBoost</h3>
+        <p id="xgboostMessage"></p>
+        <div id="xgboostKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>XGBoost Config RMSE</h4><div id="xgboostTuningChart"></div></div>
+          <div class="chart-card"><h4>Best XGBoost Fold Metrics</h4><div id="xgboostFoldChart"></div></div>
+        </div>
+        <h4>XGBoost Tuned Configurations</h4>
+        <div class="table-wrap"><table id="xgboostTuningTable"></table></div>
+        <h4>Best XGBoost Parameters</h4>
+        <div class="table-wrap"><table id="xgboostParamTable"></table></div>
+      </section>
+
+      <section id="sarimaxResults">
+        <h3>SARIMAX</h3>
+        <p id="sarimaxMessage"></p>
+        <div id="sarimaxKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>SARIMAX Fold Metrics</h4><div id="sarimaxFoldChart"></div></div>
+        </div>
+        <h4>SARIMAX Fold Table</h4>
+        <div class="table-wrap"><table id="sarimaxFoldTable"></table></div>
+        <h4>SARIMAX Exogenous Features</h4>
+        <div class="table-wrap"><table id="sarimaxFeatureTable"></table></div>
+      </section>
+
+      <section id="notebookEvidence">
+        <h3>Notebook Evidence</h3>
+        <h4>Notebook Comparison</h4>
+        <div class="table-wrap"><table id="notebookRunTable"></table></div>
+        <h4>Notebook Sources</h4>
+        <div class="table-wrap"><table id="notebookSourceTable"></table></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/model_comparison.js?v=2026-08-20-ui-v15"></script>
+</body>
+</html>
