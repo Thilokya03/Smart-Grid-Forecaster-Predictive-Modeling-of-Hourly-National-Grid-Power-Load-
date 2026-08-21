@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK Smart Grid Demand Forecast</title>
+  <link rel="stylesheet" href="/static/public.css?v=2026-08-20-public-v1">
+</head>
+<body>
+  <div class="public-shell">
+    <header class="topbar">
+      <div class="brand">UK Smart Grid Demand Forecast</div>
+      <nav>
+        <a href="#forecast">Forecast Window</a>
+        <a href="#models">Model Results</a>
+        <a href="#june">June Testing</a>
+        <a href="/admin">Admin</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Hourly demand forecasting</p>
+        <h1>Public forecast status for UK electricity demand.</h1>
+        <p class="hero-copy">A public-facing summary of the current data window, forecast inputs, and model selection results. Operational controls and notebook evidence stay in the admin dashboard.</p>
+      </div>
+      <aside class="status-panel">
+        <h2>Data Freshness</h2>
+        <div id="freshnessList" class="status-list"></div>
+      </aside>
+    </section>
+
+    <main class="content">
+      <section id="forecast" class="section">
+        <div class="section-head">
+          <div>
+            <h2>Forecast Readiness</h2>
+            <p id="forecastMessage">Loading forecast inputs...</p>
+          </div>
+        </div>
+        <div id="forecastKpis" class="metric-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="panel-grid">
+          <div class="panel">
+            <h2>Recent Demand</h2>
+            <div id="demandChart"></div>
+          </div>
+          <div class="panel">
+            <h2>Forecast Weather Drivers</h2>
+            <div id="weatherChart"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="models" class="section">
+        <div class="section-head">
+          <div>
+            <h2>Model Selection</h2>
+            <p>Cross-validation ranking before the final June holdout test.</p>
+          </div>
+        </div>
+        <div id="modelKpis" class="metric-grid"></div>
+        <div class="panel-grid section">
+          <div class="panel">
+            <h2>CV RMSE / MAE</h2>
+            <div id="leaderboardChart"></div>
+          </div>
+          <div class="panel">
+            <h2>Leaderboard</h2>
+            <div id="leaderboardList" class="leaderboard"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="june" class="section">
+        <div class="section-head">
+          <div>
+            <h2>June 2026 Final Test</h2>
+            <p id="juneMessage">Loading final holdout status...</p>
+          </div>
+        </div>
+        <div class="timeline">
+          <div class="step">
+            <strong>1. Select winner from CV</strong>
+            <span>Use the development folds only. Current CV winner is shown above.</span>
+          </div>
+          <div class="step">
+            <strong>2. Run June once</strong>
+            <span>Evaluate the selected model on 2026-06-01 to 2026-06-30 after model choice is frozen.</span>
+          </div>
+          <div class="step">
+            <strong>3. Publish predictions</strong>
+            <span>Export June metrics and the production forecast file, then show the final curve here.</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/public.js?v=2026-08-20-public-v1"></script>
+</body>
+</html>
