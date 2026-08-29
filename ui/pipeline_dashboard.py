@@ -25,13 +25,16 @@ HOLIDAYS_PATH = Path("data") / "external" / "uk_features" / "full_calendar_featu
 ECONOMIC_PATH = Path("data") / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
 DOWNLOADS_DIR = Path.home() / "Downloads"
 PROPHET_TUNED_DIR = Path("artifacts") / "prophet_tuned" / "prophet_outputs"
-XGBOOST_OUTPUT_DIR = Path("artifacts") / "xgboost_model" / "xgboost_outputs"
+XGBOOST_DIR = Path("artifacts") / "xgboost"
+XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
 SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"
+DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
 
 NOTEBOOK_SOURCES = {
     "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
     "prophet_tuning": DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
     "xgboost_comparison": DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
+    "dnn_forecasting": DOWNLOADS_DIR / "DNN_Forecasting.ipynb",
 }
 
 DATASETS = [
@@ -63,6 +66,9 @@ ARTIFACTS = [
     ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),
     ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
     ("SARIMAX order", SARIMAX_OUTPUT_DIR / "sarimax_order.json"),
+    ("DNN/LSTM notebook", DOWNLOADS_DIR / "DNN_Forecasting.ipynb"),
+    ("DNN/LSTM exported metrics", DNN_OUTPUT_DIR / "dnn_metrics.json"),
+    ("DNN/LSTM exported predictions", DNN_OUTPUT_DIR / "dnn_predictions.csv"),
 ]
 
 MODEL_OUTPUTS = {
@@ -71,6 +77,11 @@ MODEL_OUTPUTS = {
         "metrics": Path("artifacts") / "prophet_baseline" / "metrics.json",
         "predictions": Path("artifacts") / "prophet_baseline" / "validation_predictions.csv",
     },
+    "prophet_tuned": {
+        "label": "Prophet Tuned CV Candidate",
+        "metrics": PROPHET_TUNED_DIR / "best_prophet_config.json",
+        "predictions": Path("artifacts") / "prophet_tuned" / "validation_predictions.csv",
+    },
     "prophet_v2": {
         "label": "Prophet v2",
         "metrics": Path("artifacts") / "prophet_v2" / "metrics.json",
@@ -78,13 +89,18 @@ MODEL_OUTPUTS = {
     },
     "xgboost": {
         "label": "XGBoost CV Winner",
-        "metrics": XGBOOST_OUTPUT_DIR / "best_xgb_config.json",
-        "predictions": Path("artifacts") / "xgboost" / "validation_predictions.csv",
+        "metrics": XGBOOST_DIR / "validation_metrics.csv",
+        "predictions": XGBOOST_DIR / "validation_predictions.csv",
     },
     "sarimax": {
         "label": "SARIMAX CV Candidate",
         "metrics": SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json",
         "predictions": SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv",
+    },
+    "dnn": {
+        "label": "DNN/LSTM Holdout Candidate",
+        "metrics": DNN_OUTPUT_DIR / "dnn_metrics.json",
+        "predictions": DNN_OUTPUT_DIR / "dnn_predictions.csv",
     },
 }
 
@@ -208,11 +224,24 @@ def load_json_file(relative_path: Path) -> dict:
 def normalize_metric_payload(payload: dict) -> dict:
     metrics = payload.get("metrics", payload)
     return {
-        "mae": metrics.get("mae", metrics.get("mean_cv_mae", metrics.get("mean_mae", ""))),
-        "rmse": metrics.get("rmse", metrics.get("mean_cv_rmse", metrics.get("mean_rmse", ""))),
-        "mape": metrics.get("mape", metrics.get("mean_cv_mape", metrics.get("mean_mape", ""))),
-        "r2": metrics.get("r2", metrics.get("mean_cv_r2", metrics.get("mean_r2", ""))),
+        "mae": round_value(metrics.get("mae", metrics.get("mean_cv_mae", metrics.get("mean_mae", "")))),
+        "rmse": round_value(metrics.get("rmse", metrics.get("mean_cv_rmse", metrics.get("mean_rmse", "")))),
+        "mape": round_value(metrics.get("mape", metrics.get("mean_cv_mape", metrics.get("mean_mape", "")))),
+        "r2": round_value(metrics.get("r2", metrics.get("mean_cv_r2", metrics.get("mean_r2", ""))), 4),
     }
+
+
+def load_metrics_file(relative_path: Path) -> dict:
+    path = project_path(relative_path)
+    if not path.exists():
+        return {}
+    if path.suffix.lower() == ".csv":
+        frame = pd.read_csv(path)
+        if frame.empty:
+            return {}
+        return frame.iloc[0].dropna().to_dict()
+    with path.open(encoding="utf-8") as file:
+        return json.load(file)
 
 
 def load_master() -> pd.DataFrame:
@@ -695,10 +724,103 @@ def extract_fold_comparison(notebook: dict | None) -> list[dict]:
     return rows
 
 
+def extract_dnn_summary(notebook: dict | None) -> dict:
+    summary = {
+        "status": "Missing",
+        "split_rows": [],
+        "architecture_rows": [
+            {"parameter": "Architecture", "value": "Baseline LSTM"},
+            {"parameter": "Input length", "value": "168 hours"},
+            {"parameter": "Forecast horizon", "value": "24 hours"},
+            {"parameter": "Hidden size", "value": 64},
+            {"parameter": "Dense size", "value": 32},
+            {"parameter": "Dropout", "value": 0.2},
+            {"parameter": "Optimizer", "value": "Adam"},
+            {"parameter": "Learning rate", "value": 0.001},
+            {"parameter": "Early stopping patience", "value": 20},
+        ],
+        "training_rows": [],
+        "test_rows": [],
+    }
+    if not notebook:
+        return summary
+
+    texts = notebook_text_outputs(notebook)
+    joined = "\n".join(texts)
+    summary["status"] = "Ready" if joined.strip() else "Ready - no outputs"
+
+    split_patterns = [
+        ("Train", r"Train:\s*(.*?)\s*(?:→|->)\s*(.*)"),
+        ("Validation", r"Validation:\s*(.*?)\s*(?:→|->)\s*(.*)"),
+        ("Test", r"Test:\s*(.*?)\s*(?:→|->)\s*(.*)"),
+    ]
+    for label, pattern in split_patterns:
+        match = re.search(pattern, joined)
+        if match:
+            summary["split_rows"].append(
+                {"split": label, "start": match.group(1).strip(), "end": match.group(2).strip()}
+            )
+
+    epoch_pattern = re.compile(
+        r"Epoch\s+(\d+)\s+\|\s+Train Loss:\s+([0-9.]+)\s+\|\s+Val Loss:\s+([0-9.]+)"
+    )
+    for match in epoch_pattern.finditer(joined):
+        summary["training_rows"].append(
+            {
+                "epoch": int(match.group(1)),
+                "train_loss": round(float(match.group(2)), 6),
+                "val_loss": round(float(match.group(3)), 6),
+            }
+        )
+
+    result_patterns = [
+        ("Baseline LSTM", r"MAE\s*:\s*([0-9.]+)\s*MW\s*RMSE\s*:\s*([0-9.]+)\s*MW\s*R[²2]\s*:\s*([-0-9.]+)"),
+        ("Daily Seasonal Naive", r"Daily Naive MAE\s*:\s*([0-9.]+)\s*MW\s*Daily Naive RMSE\s*:\s*([0-9.]+)\s*MW"),
+        ("Weekly Seasonal Naive", r"Weekly Naive MAE\s*:\s*([0-9.]+)\s*MW\s*Weekly Naive RMSE\s*:\s*([0-9.]+)\s*MW"),
+    ]
+    for model, pattern in result_patterns:
+        match = re.search(pattern, joined)
+        if not match:
+            continue
+        row = {
+            "model": model,
+            "evaluation": "Temporal holdout test",
+            "mean_mae": round(float(match.group(1)), 4),
+            "mean_rmse": round(float(match.group(2)), 4),
+            "mean_mape": "-",
+            "mean_r2": round(float(match.group(3)), 4) if len(match.groups()) >= 3 else "-",
+        }
+        summary["test_rows"].append(row)
+
+    table_pattern = re.compile(
+        r"^\s*\d+\s+(.+?)\s+([0-9.]+)\s+([0-9.]+)\s*$",
+        re.MULTILINE,
+    )
+    if not summary["test_rows"] and "Daily Seasonal Naive" in joined and "Baseline LSTM" in joined:
+        for match in table_pattern.finditer(joined):
+            model = match.group(1).strip()
+            if model not in {"Daily Seasonal Naive", "Weekly Seasonal Naive", "Baseline LSTM"}:
+                continue
+            summary["test_rows"].append(
+                {
+                    "model": model,
+                    "evaluation": "Temporal holdout test",
+                    "mean_mae": round(float(match.group(2)), 4),
+                    "mean_rmse": round(float(match.group(3)), 4),
+                    "mean_mape": "-",
+                    "mean_r2": "-",
+                }
+            )
+
+    return summary
+
+
 def notebook_comparison_rows(notebooks: dict[str, dict | None]) -> list[dict]:
     prophet_training = notebooks["prophet_training"]
     prophet_config = extract_prophet_best_config(notebooks["prophet_tuning"])
     model_comparison = extract_model_comparison(notebooks["xgboost_comparison"])
+    dnn_summary = extract_dnn_summary(notebooks["dnn_forecasting"])
+    dnn_row = next((row for row in dnn_summary["test_rows"] if row["model"] == "Baseline LSTM"), {})
     xgb_row = next((row for row in model_comparison if row["model"] == "XGBoost"), {})
     prophet_row = next((row for row in model_comparison if row["model"] == "Prophet"), {})
     winner = min(model_comparison, key=lambda row: row["mean_rmse"])["model"] if model_comparison else "-"
@@ -743,6 +865,18 @@ def notebook_comparison_rows(notebooks: dict[str, dict | None]) -> list[dict]:
             "mean_cv_mape": xgb_row.get("mean_mape", "-"),
             "mean_cv_r2": xgb_row.get("mean_r2", "-"),
         },
+        {
+            "notebook": "DNN Forecasting",
+            "model_focus": "DNN / Baseline LSTM",
+            "comparison_role": "Temporal holdout test; not fold-matched CV yet",
+            "status": dnn_summary["status"] if NOTEBOOK_SOURCES["dnn_forecasting"].exists() else "Missing",
+            "usable_visuals": "Training loss history and holdout metrics" if dnn_summary["test_rows"] else "Notebook source detected; no metric outputs parsed",
+            "best_model": dnn_row.get("model", "-"),
+            "mean_cv_mae": dnn_row.get("mean_mae", "-"),
+            "mean_cv_rmse": dnn_row.get("mean_rmse", "-"),
+            "mean_cv_mape": dnn_row.get("mean_mape", "-"),
+            "mean_cv_r2": dnn_row.get("mean_r2", "-"),
+        },
     ]
 
 
@@ -766,6 +900,7 @@ def notebook_visuals() -> dict:
     comparison_rows = model_cv_comparison_rows() or extract_model_comparison(notebooks["xgboost_comparison"])
     fold_rows = extract_fold_comparison(notebooks["xgboost_comparison"])
     notebook_rows = notebook_comparison_rows(notebooks)
+    dnn_summary = extract_dnn_summary(notebooks["dnn_forecasting"])
 
     winner = min(comparison_rows, key=lambda row: row["mean_rmse"])["model"] if comparison_rows else "-"
     prophet_cv_rmse = prophet_config.get("mean_cv_rmse", "-")
@@ -790,6 +925,7 @@ def notebook_visuals() -> dict:
         "comparison_points": comparison_rows,
         "fold_rows": fold_rows,
         "fold_points": fold_rows,
+        "dnn_holdout_rows": dnn_summary["test_rows"],
         "message": "CV leaderboard and fold charts are built from saved model artifacts and notebook output files.",
     }
 
@@ -859,7 +995,7 @@ def xgboost_visuals() -> dict:
         "features": config.get("features", []),
         "message": (
             "XGBoost visuals use CV artifacts from artifacts/xgboost_model/xgboost_outputs. "
-            "A production prediction curve needs xgboost_model.json and validation_predictions.csv."
+            "The XGBoost validation curve uses artifacts/xgboost/validation_predictions.csv."
         ),
     }
 
@@ -964,6 +1100,60 @@ def sarimax_visuals() -> dict:
     }
 
 
+def dnn_visuals() -> dict:
+    notebook = load_notebook(NOTEBOOK_SOURCES["dnn_forecasting"])
+    summary = extract_dnn_summary(notebook)
+    metrics_path = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")
+    predictions_path = project_path(DNN_OUTPUT_DIR / "dnn_predictions.csv")
+    model_path = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")
+
+    best_row = next((row for row in summary["test_rows"] if row["model"] == "Baseline LSTM"), {})
+    kpis = [
+        {"label": "DNN Status", "value": summary["status"]},
+        {"label": "Evaluation Basis", "value": "Temporal holdout"},
+        {"label": "Test RMSE", "value": best_row.get("mean_rmse", "-")},
+        {"label": "Test MAE", "value": best_row.get("mean_mae", "-")},
+        {"label": "Test R2", "value": best_row.get("mean_r2", "-")},
+        {"label": "Production Export", "value": "Ready" if model_path.exists() else "Not exported"},
+    ]
+
+    return {
+        "kpis": kpis,
+        "split_rows": summary["split_rows"],
+        "training_rows": summary["training_rows"],
+        "training_points": summary["training_rows"],
+        "test_rows": summary["test_rows"],
+        "test_points": summary["test_rows"],
+        "architecture_rows": summary["architecture_rows"],
+        "artifact_rows": [
+            {
+                "artifact": "Notebook",
+                "path": str(NOTEBOOK_SOURCES["dnn_forecasting"]),
+                "status": "Ready" if NOTEBOOK_SOURCES["dnn_forecasting"].exists() else "Missing",
+            },
+            {
+                "artifact": "Metrics JSON",
+                "path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),
+                "status": "Ready" if metrics_path.exists() else "Missing",
+            },
+            {
+                "artifact": "Predictions CSV",
+                "path": str(DNN_OUTPUT_DIR / "dnn_predictions.csv"),
+                "status": "Ready" if predictions_path.exists() else "Missing",
+            },
+            {
+                "artifact": "PyTorch model",
+                "path": str(DNN_OUTPUT_DIR / "dnn_model.pt"),
+                "status": "Ready" if model_path.exists() else "Missing",
+            },
+        ],
+        "message": (
+            "DNN visuals use the completed DNN_Forecasting.ipynb outputs. "
+            "These are temporal holdout results, so they are shown separately from the fold-matched CV leaderboard."
+        ),
+    }
+
+
 def model_cv_comparison_rows() -> list[dict]:
     rows = []
     comparison_path = project_path(XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv")
@@ -1005,8 +1195,10 @@ def ml_model_registry() -> dict:
     prophet_baseline_model = project_path(Path("artifacts") / "prophet_baseline" / "prophet_model.json")
     prophet_tuned_config = project_path(PROPHET_TUNED_DIR / "best_prophet_config.json")
     xgb_config = project_path(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")
-    xgb_model = project_path(Path("artifacts") / "xgboost" / "xgboost_model.json")
+    xgb_model = project_path(XGBOOST_DIR / "xgboost_model.json")
     sarimax_summary = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")
+    dnn_model = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")
+    dnn_metrics = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")
 
     return {
         "models": [
@@ -1029,7 +1221,7 @@ def ml_model_registry() -> dict:
                 "label": "XGBoost CV Winner",
                 "status": "servable" if xgb_model.exists() else ("config_ready" if xgb_config.exists() else "missing_config"),
                 "config_path": str(XGBOOST_OUTPUT_DIR / "best_xgb_config.json"),
-                "model_path": str(Path("artifacts") / "xgboost" / "xgboost_model.json"),
+                "model_path": str(XGBOOST_DIR / "xgboost_model.json"),
             },
             {
                 "id": "sarimax",
@@ -1037,6 +1229,14 @@ def ml_model_registry() -> dict:
                 "status": "config_ready" if sarimax_summary.exists() else "missing_config",
                 "summary_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json"),
                 "predictions_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
+            },
+            {
+                "id": "dnn",
+                "label": "DNN/LSTM Holdout Candidate",
+                "status": "servable" if dnn_model.exists() else ("metrics_ready" if dnn_metrics.exists() else "not_exported"),
+                "metrics_path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),
+                "model_path": str(DNN_OUTPUT_DIR / "dnn_model.pt"),
+                "predictions_path": str(DNN_OUTPUT_DIR / "dnn_predictions.csv"),
             },
         ]
     }
@@ -1065,10 +1265,16 @@ def model_validation(model_key: str) -> dict:
     metrics_path = project_path(model["metrics"])
     predictions_path = project_path(model["predictions"])
 
-    metrics = {}
-    if metrics_path.exists():
-        with metrics_path.open(encoding="utf-8") as file:
-            metrics = json.load(file)
+    metrics = load_metrics_file(model["metrics"])
+    if not metrics and model_key == "dnn":
+        dnn_row = next((row for row in dnn_visuals()["test_rows"] if row["model"] == "Baseline LSTM"), {})
+        if dnn_row:
+            metrics = {
+                "mae": dnn_row.get("mean_mae"),
+                "rmse": dnn_row.get("mean_rmse"),
+                "mape": dnn_row.get("mean_mape"),
+                "r2": dnn_row.get("mean_r2"),
+            }
     normalized_metrics = normalize_metric_payload(metrics)
 
     if not predictions_path.exists():
@@ -1176,6 +1382,8 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
         return xgboost_visuals()
     if path == "/api/sarimax-visuals":
         return sarimax_visuals()
+    if path == "/api/dnn-visuals":
+        return dnn_visuals()
     if path == "/api/v1/forecast/ml/models":
         return ml_model_registry()
     if path == "/api/v1/forecast/ml/comparison":
@@ -1184,6 +1392,7 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
             "prophet_tuned": prophet_tuned_visuals(),
             "xgboost": xgboost_visuals(),
             "sarimax": sarimax_visuals(),
+            "dnn": dnn_visuals(),
         }
     if path == "/api/v1/forecast/ml":
         return ml_forecast_payload(query)

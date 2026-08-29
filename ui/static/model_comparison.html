@@ -16,13 +16,14 @@
         <a href="#prophetTuned">Prophet Tuned</a>
         <a href="#xgboostResults">XGBoost</a>
         <a href="#sarimaxResults">SARIMAX</a>
+        <a href="#dnnResults">DNN/LSTM</a>
         <a href="#notebookEvidence">Notebook Evidence</a>
       </nav>
     </aside>
     <main>
       <header>
         <h2>Model Comparison</h2>
-        <p>Prophet tuned, XGBoost, and SARIMAX comparison from saved CV artifacts. Version: 2026-08-20-ui-v15.</p>
+        <p>Prophet tuned, XGBoost, SARIMAX, and DNN/LSTM comparison from saved artifacts and notebook outputs. Version: 2026-08-20-ui-v15.</p>
       </header>
 
       <section id="leaderboard">
@@ -80,6 +81,24 @@
         <div class="table-wrap"><table id="sarimaxFoldTable"></table></div>
         <h4>SARIMAX Exogenous Features</h4>
         <div class="table-wrap"><table id="sarimaxFeatureTable"></table></div>
+      </section>
+
+      <section id="dnnResults">
+        <h3>DNN/LSTM</h3>
+        <p id="dnnMessage"></p>
+        <div id="dnnKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>DNN Training History</h4><div id="dnnLossChart"></div></div>
+          <div class="chart-card"><h4>DNN Holdout RMSE / MAE</h4><div id="dnnHoldoutChart"></div></div>
+        </div>
+        <h4>DNN Holdout Results</h4>
+        <div class="table-wrap"><table id="dnnTestTable"></table></div>
+        <h4>DNN Split Ranges</h4>
+        <div class="table-wrap"><table id="dnnSplitTable"></table></div>
+        <h4>DNN Configuration</h4>
+        <div class="table-wrap"><table id="dnnConfigTable"></table></div>
+        <h4>DNN Artifacts</h4>
+        <div class="table-wrap"><table id="dnnArtifactTable"></table></div>
       </section>
 
       <section id="notebookEvidence">
