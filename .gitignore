@@ -11,6 +11,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.venv-gpu/
 
 # Notebook/runtime caches
 .ipynb_checkpoints/

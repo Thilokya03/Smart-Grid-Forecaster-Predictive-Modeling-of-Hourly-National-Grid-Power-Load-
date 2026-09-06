@@ -1,4 +1,7 @@
-# Forecasting UK Electricity Demand with Weather, Calendar, Economic, and Machine Learning Features
+# Engineering Project Report Draft: Forecasting UK Electricity Demand with Weather, Calendar, Economic, and Machine Learning Features
+
+**Contributors:** Amantha H. D. K. N., Angeesa R. P. T., Amana M. F. F. 
+**Project status date:** 30 August 2026
 
 ## Abstract
 
@@ -140,21 +143,38 @@ artifacts/prophet_tuned/validation_predictions.csv
 artifacts/dnn/dnn_outputs/dnn_predictions.csv
 ```
 
-## 8. Discussion
+## 8. Sprint Delivery Status
+
+The following assessment distinguishes implemented evidence from the original card acceptance criteria. A card is only marked complete when its main deliverable is present and usable; partial status means that a working foundation exists but one or more required outputs remain.
+
+| Card | Deliverable | Status | Evidence and remaining work |
+|---|---|---|---|
+| Card 03 | Historical weather extraction pipeline | Complete (100%) | Historical hourly weather extraction, cleaning, UK-wide averaging, and timestamp-aligned outputs are implemented. The delivered pipeline uses Open-Meteo and produces the project's operational weather datasets (`uk_average_weather.csv` and `weather_hourly.csv`). |
+| Card 06 | Anomaly treatment and master training dataset | Complete (100%) | Load, weather, holiday, and economic arrays are timestamp-aligned and saved to `data/processed/master_training_data.csv`. The builder removes incomplete or invalid demand tail records and caps records to available weather coverage. |
+| Card 08 | Prophet configuration, training, and tuning | Complete (100%) | Prophet baseline and tuned training scripts, holiday features, Fourier/seasonality tuning outputs, and fold metrics are present. Exporting additional row-level predictions is a dashboard enhancement, not a requirement for this training-and-tuning card. |
+| Card 14 | XGBoost and Prophet ML prediction endpoints | Started (25%) | `/api/v1/forecast/ml`, model registry, and comparison endpoints exist, but the forecast route deliberately returns `not_ready`; it does not yet load a production XGBoost or Prophet model and generate a forecast. |
+| Card 15 | Interactive multi-model forecast curves | Complete (100%) | Interactive model-selection, validation, and comparison curves are implemented for Prophet, XGBoost, SARIMAX, and DNN/LSTM. Tuned Prophet validation data is available; the DNN/LSTM view correctly reports its artifact state until DNN prediction outputs are exported. |
+| Card 18 | Filters and responsive UI | Complete (100%) | Period and model selectors, responsive grids, mobile breakpoint rules, and scrollable tables are implemented. |
+| Card 19 | Unified Docker configuration | Complete (100%) | Docker Compose now runs a Python `pipeline-api` service and a separate Nginx `pipeline-frontend` service, with data/artifact volumes mounted into the API service and frontend proxying configured for dashboard API calls. |
+| Card 23 | Engineering report and final assets | Partially complete (80%) | This report, runbook, pipeline documentation, model-status document, submission checklist, and dashboard artifacts are available. Final screenshots/graphs, locked June test results, and production-serving evidence remain. |
+
+Using the eight cards with equal weight, the current completion estimate is **88%**. Six cards are complete; the remaining material work is Card 14 production forecast serving and the final report/submission evidence under Card 23. This value is a delivery estimate, not a claim that every future model artifact has been generated.
+
+## 9. Discussion
 
 The results indicate that feature-engineered tree boosting is currently the strongest approach for this dataset. XGBoost benefits from lag variables and exogenous predictors without requiring strict parametric assumptions about demand shape. Tuned Prophet performs meaningfully better than the older Prophet v1 baseline and provides interpretable seasonality and regressor behavior, but it is weaker than XGBoost on the current CV folds. SARIMAX provides a useful statistical benchmark but is less accurate, likely because the demand series has complex nonlinear interactions with weather, holidays, and recent demand.
 
 The DNN/LSTM candidate requires more work before final ranking. Its current result is useful evidence, but not a fair direct comparison because the evaluation split differs from the main CV protocol. A stronger DNN experiment should include weather and calendar features, not only historical demand, and should report the same Aug/Nov/Feb/May folds used by the other models.
 
-## 9. Limitations
+## 10. Limitations
 
 1. June 2026 has not yet been used for final model selection validation.
 2. DNN/LSTM is not yet evaluated on the same four folds as the other candidate models.
 3. Prophet tuned row-level predictions are not yet exported for dashboard curve display.
-4. DNN production artifacts are not yet exported because PyTorch is not installed in the local environment.
+4. DNN production artifacts are not yet exported. PyTorch is installed in the project virtual environment, so the fold-matched DNN run can now be executed; its outputs still need to be generated and checked.
 5. External API access can fail locally due socket permission restrictions, so the dashboard uses cached demand/weather files when necessary.
 
-## 10. Next Steps
+## 11. Next Steps
 
 ### Immediate next steps for today
 
@@ -214,7 +234,7 @@ http://127.0.0.1:8765/model-comparison
 4. Add frontend public forecast cards and charts from the production forecast endpoint.
 5. Set `DASHBOARD_ADMIN_TOKEN` before deployment so admin pages are protected.
 
-## 11. Conclusion
+## 12. Conclusion
 
 The current system has a complete data pipeline, a working dashboard, and a model comparison layer. XGBoost is the strongest current model under the shared cross-validation protocol, with mean RMSE 1111.55 MW and mean MAPE 3.24%. Tuned Prophet and SARIMAX remain useful benchmarks, while DNN/LSTM needs a fold-matched and feature-enriched evaluation before final ranking. The immediate priority is to export missing row-level prediction CSVs for Prophet tuned and DNN, then run the locked June 2026 final test once the final candidate set is complete.
 

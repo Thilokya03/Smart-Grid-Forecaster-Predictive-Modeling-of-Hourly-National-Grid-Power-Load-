@@ -7,6 +7,17 @@
 | Main dashboard | `http://127.0.0.1:8765` | Local dashboard for dataset status, model visualizer, artifacts, and pipeline actions. |
 | Model comparison | `http://127.0.0.1:8765/model-comparison` | Dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, DNN/LSTM, and notebook evidence. |
 
+## Container Deployment
+
+`docker compose up --build` now starts two services:
+
+| Service | Purpose |
+|---|---|
+| `pipeline-api` | Runs the Python dashboard/API process and reads the mounted data and model artifacts. |
+| `pipeline-frontend` | Runs Nginx, serves the static dashboard, and proxies `/api/` and `/run` requests to `pipeline-api`. |
+
+Open the frontend at `http://127.0.0.1:8765`. Docker Desktop must be installed and running before the command can be used.
+
 ## Main API Endpoints
 
 | Endpoint | Purpose |
@@ -33,7 +44,7 @@
 | Button/model key | Current status |
 |---|---|
 | `prophet_v1` | Has June baseline CSV, kept only as baseline. |
-| `prophet_tuned` | Has metrics, missing row-level validation prediction CSV. |
+| `prophet_tuned` | Ready with metrics and row-level validation prediction CSV. |
 | `xgboost` | Ready with metrics and validation prediction CSV. |
 | `sarimax` | Ready with metrics and CV prediction CSV. |
 | `dnn` | Has parsed notebook metrics, missing exported prediction CSV. |

@@ -98,7 +98,7 @@ MODEL_OUTPUTS = {
         "predictions": SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv",
     },
     "dnn": {
-        "label": "DNN/LSTM Holdout Candidate",
+        "label": "DNN/LSTM CV Candidate",
         "metrics": DNN_OUTPUT_DIR / "dnn_metrics.json",
         "predictions": DNN_OUTPUT_DIR / "dnn_predictions.csv",
     },
@@ -1105,15 +1105,33 @@ def dnn_visuals() -> dict:
     summary = extract_dnn_summary(notebook)
     metrics_path = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")
     predictions_path = project_path(DNN_OUTPUT_DIR / "dnn_predictions.csv")
+    fold_metrics_path = project_path(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv")
     model_path = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")
 
+    cv_metrics = load_json_file(DNN_OUTPUT_DIR / "dnn_metrics.json")
+    fold_rows = []
+    if fold_metrics_path.exists():
+        fold_frame = pd.read_csv(fold_metrics_path, low_memory=False)
+        for _, row in fold_frame.iterrows():
+            fold_rows.append(
+                {
+                    "model": "DNN/LSTM",
+                    "evaluation": row.get("fold", "CV fold"),
+                    "mean_mae": round(float(row["mae"]), 4),
+                    "mean_rmse": round(float(row["rmse"]), 4),
+                    "mean_mape": round(float(row["mape"]), 4),
+                    "mean_r2": round(float(row["r2"]), 4),
+                }
+            )
+
     best_row = next((row for row in summary["test_rows"] if row["model"] == "Baseline LSTM"), {})
+    has_cv_export = bool(cv_metrics and predictions_path.exists())
     kpis = [
-        {"label": "DNN Status", "value": summary["status"]},
-        {"label": "Evaluation Basis", "value": "Temporal holdout"},
-        {"label": "Test RMSE", "value": best_row.get("mean_rmse", "-")},
-        {"label": "Test MAE", "value": best_row.get("mean_mae", "-")},
-        {"label": "Test R2", "value": best_row.get("mean_r2", "-")},
+        {"label": "DNN Status", "value": "Fold-matched CV ready" if has_cv_export else summary["status"]},
+        {"label": "Evaluation Basis", "value": cv_metrics.get("evaluation", "Temporal holdout") if cv_metrics else "Temporal holdout"},
+        {"label": "Mean CV RMSE", "value": round_value(cv_metrics.get("rmse")) if cv_metrics else best_row.get("mean_rmse", "-")},
+        {"label": "Mean CV MAE", "value": round_value(cv_metrics.get("mae")) if cv_metrics else best_row.get("mean_mae", "-")},
+        {"label": "Mean CV R2", "value": round_value(cv_metrics.get("r2")) if cv_metrics else best_row.get("mean_r2", "-")},
         {"label": "Production Export", "value": "Ready" if model_path.exists() else "Not exported"},
     ]
 
@@ -1122,8 +1140,8 @@ def dnn_visuals() -> dict:
         "split_rows": summary["split_rows"],
         "training_rows": summary["training_rows"],
         "training_points": summary["training_rows"],
-        "test_rows": summary["test_rows"],
-        "test_points": summary["test_rows"],
+        "test_rows": fold_rows or summary["test_rows"],
+        "test_points": fold_rows or summary["test_rows"],
         "architecture_rows": summary["architecture_rows"],
         "artifact_rows": [
             {
@@ -1132,14 +1150,19 @@ def dnn_visuals() -> dict:
                 "status": "Ready" if NOTEBOOK_SOURCES["dnn_forecasting"].exists() else "Missing",
             },
             {
-                "artifact": "Metrics JSON",
+                "artifact": "CV metrics JSON",
                 "path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),
                 "status": "Ready" if metrics_path.exists() else "Missing",
             },
             {
-                "artifact": "Predictions CSV",
+                "artifact": "CV predictions CSV",
                 "path": str(DNN_OUTPUT_DIR / "dnn_predictions.csv"),
                 "status": "Ready" if predictions_path.exists() else "Missing",
+            },
+            {
+                "artifact": "CV fold metrics CSV",
+                "path": str(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv"),
+                "status": "Ready" if fold_metrics_path.exists() else "Missing",
             },
             {
                 "artifact": "PyTorch model",
@@ -1148,8 +1171,8 @@ def dnn_visuals() -> dict:
             },
         ],
         "message": (
-            "DNN visuals use the completed DNN_Forecasting.ipynb outputs. "
-            "These are temporal holdout results, so they are shown separately from the fold-matched CV leaderboard."
+            "DNN visuals use fold-matched CV artifacts from artifacts/dnn/dnn_outputs when exported. "
+            "If those files are missing, the page falls back to the DNN_Forecasting.ipynb holdout evidence."
         ),
     }
 
@@ -1185,6 +1208,23 @@ def model_cv_comparison_rows() -> list[dict]:
                 "std_rmse": round(float(sarimax_summary["std_rmse"]), 4),
                 "worst_fold_rmse": round(float(sarimax_summary["worst_fold_rmse"]), 4),
                 "min_fold_r2": round(float(sarimax_summary["min_fold_r2"]), 4),
+            }
+        )
+
+    dnn_metrics = load_json_file(DNN_OUTPUT_DIR / "dnn_metrics.json")
+    dnn_folds = project_path(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv")
+    if dnn_metrics and dnn_folds.exists():
+        fold_frame = pd.read_csv(dnn_folds, low_memory=False)
+        rows.append(
+            {
+                "model": "DNN/LSTM",
+                "mean_mae": round(float(dnn_metrics["mae"]), 4),
+                "mean_rmse": round(float(dnn_metrics["rmse"]), 4),
+                "mean_mape": round(float(dnn_metrics["mape"]), 4),
+                "mean_r2": round(float(dnn_metrics["r2"]), 4),
+                "std_rmse": round(float(fold_frame["rmse"].std(ddof=0)), 4),
+                "worst_fold_rmse": round(float(fold_frame["rmse"].max()), 4),
+                "min_fold_r2": round(float(fold_frame["r2"].min()), 4),
             }
         )
 
@@ -1232,7 +1272,7 @@ def ml_model_registry() -> dict:
             },
             {
                 "id": "dnn",
-                "label": "DNN/LSTM Holdout Candidate",
+                "label": "DNN/LSTM CV Candidate",
                 "status": "servable" if dnn_model.exists() else ("metrics_ready" if dnn_metrics.exists() else "not_exported"),
                 "metrics_path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),
                 "model_path": str(DNN_OUTPUT_DIR / "dnn_model.pt"),

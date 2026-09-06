@@ -1,13 +1,22 @@
 services:
-  pipeline-ui:
+  pipeline-api:
     build: .
-    container_name: uk-weather-pipeline-ui
-    ports:
-      - "8765:8765"
+    container_name: uk-weather-pipeline-api
     environment:
       DEMAND_INPUT_FOLDER: /input/demand
     volumes:
       - ./data:/app/data
       - ./artifacts:/app/artifacts
       - ${USERPROFILE}/Downloads:/input/demand:ro
+    restart: unless-stopped
+
+  pipeline-frontend:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: uk-weather-pipeline-frontend
+    depends_on:
+      - pipeline-api
+    ports:
+      - "8765:80"
     restart: unless-stopped
