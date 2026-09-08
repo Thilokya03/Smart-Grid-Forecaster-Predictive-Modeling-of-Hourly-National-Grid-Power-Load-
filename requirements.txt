@@ -2,3 +2,4 @@ pandas
 requests
 tqdm
 prophet
+torch==2.13.0

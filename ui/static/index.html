@@ -75,8 +75,10 @@
         <p class="section-note">This chart uses local prediction artifact files. Use Model Comparison for CV leaderboard and tuning results.</p>
         <div class="toolbar">
           <button data-model="prophet_v1" class="model-active">Prophet v1 Baseline</button>
+          <button data-model="prophet_tuned">Prophet Tuned</button>
           <button data-model="xgboost">XGBoost</button>
           <button data-model="sarimax">SARIMAX</button>
+          <button data-model="dnn">DNN/LSTM</button>
         </div>
         <div id="modelMetrics" class="grid"></div>
         <p id="modelMessage"></p>
@@ -85,7 +87,7 @@
 
       <section id="modelComparisonLink">
         <h3>Model Comparison</h3>
-        <p class="section-note">Open the dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, CV leaderboards, and tuning details.</p>
+        <p class="section-note">Open the dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, DNN/LSTM, CV leaderboards, and tuning details.</p>
         <a class="primary-link" href="/model-comparison">Open Model Comparison</a>
       </section>
 
