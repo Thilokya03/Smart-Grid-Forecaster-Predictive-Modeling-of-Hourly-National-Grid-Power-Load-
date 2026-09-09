@@ -28,6 +28,8 @@ ALL_HORIZONS_PATH = OUTPUT_DIR / "dnn_predictions_all_horizons.csv"
 METRICS_PATH = OUTPUT_DIR / "dnn_metrics.json"
 FOLD_METRICS_PATH = OUTPUT_DIR / "dnn_validation_metrics.csv"
 MODEL_PATH = OUTPUT_DIR / "dnn_model.pt"
+CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
+RESUME_PATH = CHECKPOINT_DIR / "lstm_cv_resume.pt"
 
 
 # ============================================================
@@ -446,6 +448,7 @@ def main():
         parents=True,
         exist_ok=True,
     )
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
     print("LSTM 4-FOLD TIME-SERIES CROSS VALIDATION")
@@ -514,20 +517,54 @@ def main():
     # Storage
     # --------------------------------------------------------
 
-    all_fold_predictions = []
+    resume_signature = {
+        "rows": len(data),
+        "last_timestamp": str(timestamps[-1]),
+        "folds": [(name, str(start), str(end)) for name, start, end in FOLDS],
+        "input_length": INPUT_LENGTH,
+        "forecast_horizon": FORECAST_HORIZON,
+        "hidden_size": HIDDEN_SIZE,
+        "dense_size": DENSE_SIZE,
+        "dropout": DROPOUT,
+        "batch_size": BATCH_SIZE,
+        "epochs": EPOCHS,
+        "learning_rate": LEARNING_RATE,
+    }
 
-    fold_results = []
-
-    best_fold_loss = float("inf")
-    best_fold_state = None
-    best_fold_name = None
-    best_fold_scaler = None
+    if RESUME_PATH.exists():
+        resume = torch.load(RESUME_PATH, map_location="cpu", weights_only=False)
+        if resume.get("signature") != resume_signature:
+            raise RuntimeError(
+                "The saved LSTM resume state does not match this dataset/configuration. "
+                f"Remove {RESUME_PATH} to start a new run."
+            )
+        all_fold_predictions = resume["all_fold_predictions"]
+        fold_results = resume["fold_results"]
+        best_fold_loss = resume["best_fold_loss"]
+        best_fold_state = resume["best_fold_state"]
+        best_fold_name = resume["best_fold_name"]
+        best_fold_scaler = resume["best_fold_scaler"]
+        print(
+            f"Resuming after {len(fold_results)} completed fold(s): "
+            f"{[row['fold'] for row in fold_results]}"
+        )
+    else:
+        all_fold_predictions = []
+        fold_results = []
+        best_fold_loss = float("inf")
+        best_fold_state = None
+        best_fold_name = None
+        best_fold_scaler = None
 
     # ========================================================
     # RUN FOUR FOLDS
     # ========================================================
 
     for fold_name, valid_start, valid_end in FOLDS:
+
+        if fold_name in {row["fold"] for row in fold_results}:
+            print(f"Skipping completed fold: {fold_name}")
+            continue
 
         print()
         print("=" * 70)
@@ -644,12 +681,32 @@ def main():
 
         patience_counter = 0
 
+        fold_checkpoint_path = CHECKPOINT_DIR / f"{fold_name}_training.pt"
+        start_epoch = 1
+        if fold_checkpoint_path.exists():
+            checkpoint = torch.load(
+                fold_checkpoint_path,
+                map_location=device,
+                weights_only=False,
+            )
+            if checkpoint.get("signature") != resume_signature:
+                raise RuntimeError(
+                    f"Checkpoint configuration mismatch: {fold_checkpoint_path}"
+                )
+            model.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            best_val_loss = checkpoint["best_val_loss"]
+            best_model_state = checkpoint["best_model_state"]
+            patience_counter = checkpoint["patience_counter"]
+            start_epoch = checkpoint["epoch"] + 1
+            print(f"Resuming {fold_name} at epoch {start_epoch}.")
+
         # ----------------------------------------------------
         # Training
         # ----------------------------------------------------
 
         for epoch in range(
-            1,
+            start_epoch,
             EPOCHS + 1,
         ):
 
@@ -691,6 +748,20 @@ def main():
             else:
 
                 patience_counter += 1
+
+            torch.save(
+                {
+                    "signature": resume_signature,
+                    "fold": fold_name,
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "best_val_loss": best_val_loss,
+                    "best_model_state": best_model_state,
+                    "patience_counter": patience_counter,
+                },
+                fold_checkpoint_path,
+            )
 
             if patience_counter >= PATIENCE:
 
@@ -778,7 +849,7 @@ def main():
         )
 
         print(
-            f"R²   : {fold_metric['r2']:.4f}"
+            f"R2    : {fold_metric['r2']:.4f}"
         )
 
         # ----------------------------------------------------
@@ -847,6 +918,31 @@ def main():
             best_fold_name = fold_name
 
             best_fold_scaler = scaler
+
+        # Persist every completed fold immediately so an interruption does not
+        # discard hours of completed CPU training.
+        pd.DataFrame(all_fold_predictions).to_csv(
+            ALL_HORIZONS_PATH,
+            index=False,
+        )
+        pd.DataFrame(fold_results).to_csv(
+            FOLD_METRICS_PATH,
+            index=False,
+        )
+        torch.save(
+            {
+                "signature": resume_signature,
+                "all_fold_predictions": all_fold_predictions,
+                "fold_results": fold_results,
+                "best_fold_loss": best_fold_loss,
+                "best_fold_state": best_fold_state,
+                "best_fold_name": best_fold_name,
+                "best_fold_scaler": best_fold_scaler,
+            },
+            RESUME_PATH,
+        )
+        fold_checkpoint_path.unlink(missing_ok=True)
+        print(f"Saved completed fold and resume state: {fold_name}")
 
     # ========================================================
     # SAVE ALL PREDICTIONS
@@ -1030,7 +1126,7 @@ def main():
     )
 
     print(
-        f"Mean R²   : {mean_r2:.4f}"
+        f"Mean R2   : {mean_r2:.4f}"
     )
 
     print()
@@ -1066,5 +1162,17 @@ def main():
     )
 
 
+def cli() -> None:
+    """Run training with a clean message when the user stops it."""
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(
+            "\nTraining interrupted. Run the same command again to resume "
+            "from the last completed epoch."
+        )
+        raise SystemExit(130) from None
+
+
 if __name__ == "__main__":
-    main()
+    cli()

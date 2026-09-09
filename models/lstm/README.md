@@ -21,3 +21,9 @@ python -m models.lstm.lstm_model
 
 Outputs are written to `artifacts/dnn/dnn_outputs/`, matching the existing
 dashboard and Prophet comparison workflow.
+
+Training progress is checkpointed after every epoch and every completed fold.
+If training is interrupted, run the same command again; completed folds are
+skipped and the active fold resumes at the next epoch. Remove
+`artifacts/dnn/dnn_outputs/checkpoints/` only when you intentionally want to
+restart all four folds from scratch.

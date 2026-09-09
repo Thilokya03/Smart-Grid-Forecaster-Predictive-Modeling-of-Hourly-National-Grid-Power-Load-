@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from models.cross_validation import FINAL_TEST_START, VALIDATION_FOLDS
+from models.cross_validation import FINAL_TEST_START, VALIDATION_FOLDS, validate_folds
 from models.lstm.lstm_model import create_fold_windows as build_lstm_windows
 from models.timesfm.timesfm_utils import build_fold_windows as build_timesfm_windows
 
@@ -20,6 +20,11 @@ class ForecastCrossValidationTests(unittest.TestCase):
     def test_shared_folds_do_not_overlap_locked_test(self) -> None:
         self.assertEqual(len(VALIDATION_FOLDS), 4)
         self.assertTrue(all(end < FINAL_TEST_START for _, _, end in VALIDATION_FOLDS))
+
+    def test_fold_validation_rejects_incomplete_dataset(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_folds(pd.Timestamp("2026-04-30 23:00:00"))
+        validate_folds(pd.Timestamp("2026-05-31 23:00:00"))
 
     def test_models_build_the_same_validation_windows(self) -> None:
         start = pd.Timestamp("2025-01-10 00:00:00")
