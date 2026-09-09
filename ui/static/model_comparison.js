@@ -41,7 +41,7 @@ function renderTable(id, rows, columns) {
     <tbody>${data.map((row) => `<tr>${columns.map((c) => {
       const value = row[c.key] ?? "-";
       if (c.key === "status") {
-        const cls = value === "Ready" || value === "servable" || value === "config_ready" ? "ready" : "missing";
+        const cls = value === "Ready" || value === "servable" || value === "config_ready" || value === "metrics_ready" ? "ready" : "missing";
         return `<td><span class="pill ${cls}">${escapeHtml(value)}</span></td>`;
       }
       return `<td>${escapeHtml(value)}</td>`;
@@ -325,8 +325,44 @@ async function loadSarimax() {
   ]);
 }
 
+async function loadDnn() {
+  const data = await fetchJson("/api/dnn-visuals");
+  document.getElementById("dnnMessage").textContent = data.message || "";
+  cardGrid("dnnKpis", data.kpis || []);
+  lineChart("dnnLossChart", data.training_points || [], [
+    {key: "train_loss", label: "Train Loss", color: "#0b5cab"},
+    {key: "val_loss", label: "Validation Loss", color: "#c2410c"}
+  ], "epoch", {xLabel: "Epoch", yLabel: "MSE loss"});
+  lineChart("dnnHoldoutChart", data.test_points || [], [
+    {key: "mean_rmse", label: "RMSE", color: "#0f766e"},
+    {key: "mean_mae", label: "MAE", color: "#7c3aed"}
+  ], "model", {xLabel: "Model", yLabel: "MW"});
+  renderTable("dnnTestTable", data.test_rows || [], [
+    {key: "model", label: "Model"},
+    {key: "evaluation", label: "Evaluation"},
+    {key: "mean_rmse", label: "RMSE"},
+    {key: "mean_mae", label: "MAE"},
+    {key: "mean_r2", label: "R2"},
+    {key: "mean_mape", label: "MAPE"}
+  ]);
+  renderTable("dnnSplitTable", data.split_rows || [], [
+    {key: "split", label: "Split"},
+    {key: "start", label: "Start"},
+    {key: "end", label: "End"}
+  ]);
+  renderTable("dnnConfigTable", data.architecture_rows || [], [
+    {key: "parameter", label: "Parameter"},
+    {key: "value", label: "Value"}
+  ]);
+  renderTable("dnnArtifactTable", data.artifact_rows || [], [
+    {key: "artifact", label: "Artifact"},
+    {key: "path", label: "Path"},
+    {key: "status", label: "Status"}
+  ]);
+}
+
 async function refreshComparisonPage() {
-  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax()]);
+  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn()]);
 }
 
 refreshComparisonPage().catch((error) => {
