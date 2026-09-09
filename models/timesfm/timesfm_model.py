@@ -7,17 +7,21 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+import pandas as pd
+
+from models.cross_validation import VALIDATION_FOLDS, validate_folds
 
 from .timesfm_utils import (
-    build_forecast_windows,
+    build_fold_windows,
     calculate_metrics,
     find_hourly_gaps,
+    fold_prediction_frame,
     load_demand_data,
     prepare_timesfm_input,
     save_evaluation,
+    save_fold_metrics,
     save_model_comparison,
     save_plots,
-    save_predictions,
 )
 
 
@@ -106,13 +110,12 @@ def run_pipeline(
     results_dir: str | Path = DEFAULT_RESULTS_DIR,
     context_length: int = CONTEXT_LENGTH,
     horizon: int = FORECAST_HORIZON,
-    test_ratio: float = 0.15,
-    stride: int = 24,
+    stride: int = 1,
     max_windows: int | None = None,
     batch_size: int = 32,
     local_files_only: bool = False,
 ) -> dict[str, float]:
-    """Execute the complete TimesFM forecasting and evaluation workflow."""
+    """Run TimesFM on the four shared chronological validation folds."""
     results_dir = Path(results_dir)
     frame = load_demand_data(data_path)
     gaps = find_hourly_gaps(frame)
@@ -121,19 +124,7 @@ def run_pipeline(
         f"Loaded {len(timesfm_input):,} hourly demand rows "
         f"({len(gaps)} discontinuities detected)."
     )
-
-    contexts, actuals, timestamps = build_forecast_windows(
-        frame,
-        context_length=context_length,
-        horizon=horizon,
-        test_ratio=test_ratio,
-        stride=stride,
-        max_windows=max_windows,
-    )
-    print(
-        f"Evaluating {len(contexts):,} continuous "
-        f"{context_length}-to-{horizon}-hour windows."
-    )
+    validate_folds(frame["timestamp"].max())
 
     model = load_timesfm_model(
         context_length=context_length,
@@ -141,17 +132,59 @@ def run_pipeline(
         batch_size=batch_size,
         local_files_only=local_files_only,
     )
-    predicted = generate_forecast(model, contexts, horizon, batch_size)
-    actual = np.stack(actuals)
-    metrics = calculate_metrics(actual, predicted)
+    fold_rows: list[dict[str, object]] = []
+    prediction_frames: list[pd.DataFrame] = []
+    for fold_name, validation_start, validation_end in VALIDATION_FOLDS:
+        contexts, actuals, timestamps = build_fold_windows(
+            frame,
+            validation_start,
+            validation_end,
+            context_length=context_length,
+            horizon=horizon,
+            stride=stride,
+            max_windows=max_windows,
+        )
+        print(
+            f"{fold_name}: evaluating {len(contexts):,} continuous "
+            f"{context_length}-to-{horizon}-hour windows."
+        )
+        predicted = generate_forecast(model, contexts, horizon, batch_size)
+        actual = np.stack(actuals)
+        fold_metrics = calculate_metrics(actual, predicted)
+        fold_rows.append(
+            {
+                "fold": fold_name,
+                "validation_start": validation_start,
+                "validation_end": validation_end,
+                "samples": len(contexts),
+                "mae": fold_metrics["MAE"],
+                "rmse": fold_metrics["RMSE"],
+                "mape": fold_metrics["MAPE"],
+                "r2": fold_metrics["R2"],
+            }
+        )
+        prediction_frames.append(
+            fold_prediction_frame(fold_name, timestamps, actual, predicted)
+        )
 
-    prediction_data = save_predictions(
-        timestamps,
-        actual,
-        predicted,
-        results_dir / "timesfm_predictions.csv",
+    fold_data = save_fold_metrics(
+        fold_rows,
+        results_dir / "timesfm_validation_metrics.csv",
     )
-    save_evaluation(metrics, results_dir / "timesfm_evaluation_results.csv")
+    metrics = {
+        "MAE": float(fold_data["mae"].mean()),
+        "RMSE": float(fold_data["rmse"].mean()),
+        "MAPE": float(fold_data["mape"].mean()),
+        "R2": float(fold_data["r2"].mean()),
+    }
+    prediction_data = pd.concat(prediction_frames, ignore_index=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    prediction_data.to_csv(results_dir / "timesfm_predictions.csv", index=False)
+    save_evaluation(
+        metrics,
+        results_dir / "timesfm_evaluation_results.csv",
+        folds=[fold[0] for fold in VALIDATION_FOLDS],
+    )
     save_model_comparison(
         PROJECT_ROOT,
         metrics,
@@ -171,12 +204,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", type=Path, default=DEFAULT_DATA_PATH)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--stride", type=int, default=24)
+    parser.add_argument("--stride", type=int, default=1)
     parser.add_argument(
         "--max-windows",
         type=int,
         default=0,
-        help="Maximum test windows; default 0 evaluates every eligible window.",
+        help="Maximum windows per fold; default 0 evaluates every eligible window.",
     )
     parser.add_argument(
         "--local-files-only",

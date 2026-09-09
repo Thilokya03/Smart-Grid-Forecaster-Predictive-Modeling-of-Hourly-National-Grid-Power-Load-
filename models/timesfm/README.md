@@ -16,9 +16,10 @@ forecasting; the checkpoint is not trained or fine-tuned by this project.
 
 TimesFM 2.5 does not require a frequency indicator. Hourly frequency is
 represented by the ordered input samples, and windows containing timestamp gaps
-are excluded. By default, evaluation starts at the chronological 85% split,
-and uses one forecast origin per day. Use `--stride 1` for every eligible
-hourly test origin, or `--max-windows N` to cap inference for a quick run.
+are excluded. Evaluation uses the same four expanding-window validation months
+as Prophet and LSTM: August 2025, November 2025, February 2026, and May 2026.
+June 2026 stays locked for final testing. Every eligible hourly forecast origin
+is evaluated by default; use `--max-windows N` to cap each fold for a quick run.
 
 ## Run
 
@@ -33,6 +34,7 @@ The first run downloads the pretrained checkpoint from Hugging Face. Outputs:
 
 - `results/timesfm_predictions.csv`
 - `results/timesfm_evaluation_results.csv`
+- `results/timesfm_validation_metrics.csv`
 - `results/model_comparison_timesfm.csv`
 - `results/plots/timesfm/actual_vs_timesfm.png`
 - `results/plots/timesfm/timesfm_24_hour_forecast.png`
