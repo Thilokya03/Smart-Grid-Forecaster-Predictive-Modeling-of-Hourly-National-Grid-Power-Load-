@@ -42,16 +42,6 @@ class ProjectAssetTests(unittest.TestCase):
             any(requirement.startswith("scikit-learn") for requirement in requirements)
         )
 
-        test_requirements = {
-            line.strip().lower()
-            for line in (PROJECT_ROOT / "requirements-test.txt")
-            .read_text(encoding="utf-8")
-            .splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        }
-        self.assertIn("timesfm[torch]==2.0.2", test_requirements)
-        self.assertIn("torch>=2.0", test_requirements)
-
     def test_model_packages_and_compatibility_script_import(self) -> None:
         check = subprocess.run(
             [
@@ -85,7 +75,10 @@ class ProjectAssetTests(unittest.TestCase):
 
         self.assertIn("actions/checkout@v7", workflow)
         self.assertIn("actions/setup-python@v7", workflow)
-        self.assertIn("requirements-test.txt", workflow)
+        self.assertNotIn("requirements-test.txt", workflow)
+        self.assertIn('"pytest>=9.0"', workflow)
+        self.assertIn('"torch>=2.0"', workflow)
+        self.assertIn('"timesfm[torch]==2.0.2"', workflow)
         self.assertIn("python -m pip check", workflow)
         self.assertIn("python -m compileall -q models scripts tests", workflow)
         self.assertIn("run: pytest", workflow)
