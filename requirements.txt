@@ -1,4 +1,9 @@
 pandas
+numpy
+matplotlib
+scikit-learn
 requests
 tqdm
 prophet
+torch>=2.0
+timesfm[torch]==2.0.2
