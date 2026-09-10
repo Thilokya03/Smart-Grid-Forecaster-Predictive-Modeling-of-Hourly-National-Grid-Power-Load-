@@ -2,4 +2,7 @@ pandas
 requests
 tqdm
 prophet
+statsmodels
 torch==2.13.0
+xgboost
+scikit-learn
