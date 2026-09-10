@@ -1,5 +1,4 @@
 timestamp,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,shortwave_radiation,city,source
-2026-09-10 15:00:00,16.86,73.1,11.69,14.95,0.23,0.23,1006.22,97.7,16.9,210.8,126.8,UK_Average,forecast
 2026-09-10 16:00:00,16.82,75.4,12.29,14.85,0.08,0.08,1005.4,99.9,18.57,185.2,92.7,UK_Average,forecast
 2026-09-10 17:00:00,16.44,81.8,13.2,14.79,0.47,0.47,1005.03,99.6,18.43,203.8,66.8,UK_Average,forecast
 2026-09-10 18:00:00,16.35,82.2,13.23,14.6,0.38,0.38,1004.79,100.0,19.13,212.2,53.3,UK_Average,forecast
@@ -167,3 +166,4 @@ timestamp,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,
 2026-09-17 12:00:00,15.62,81.9,12.46,13.21,0.5,0.47,1000.98,79.1,22.17,253.5,250.4,UK_Average,forecast
 2026-09-17 13:00:00,15.88,80.8,12.46,13.4,0.5,0.47,1000.74,79.3,22.62,256.2,272.8,UK_Average,forecast
 2026-09-17 14:00:00,15.93,80.3,12.43,13.44,0.18,0.13,1000.48,80.0,22.7,258.1,295.3,UK_Average,forecast
+2026-09-17 15:00:00,15.82,80.2,12.33,13.31,0.18,0.13,1000.23,81.9,22.59,259.0,280.1,UK_Average,forecast
