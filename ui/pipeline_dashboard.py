@@ -25,6 +25,15 @@ AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", ""
 DASHBOARD_VERSION = "2026-08-20-ui-v15"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+
+def first_existing_path(*paths: Path) -> Path:
+    for path in paths:
+        candidate = path if path.is_absolute() else PROJECT_ROOT / path
+        if candidate.exists():
+            return candidate
+    return paths[0]
+
+
 MASTER_PATH = Path("data") / "processed" / "master_training_data.csv"
 WEATHER_FORECAST_PATH = Path("data") / "weather_runtime" / "rolling_forecast_weather.csv"
 FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
@@ -35,7 +44,10 @@ PROPHET_TUNED_DIR = Path("artifacts") / "prophet_tuned" / "prophet_outputs"
 XGBOOST_DIR = Path("artifacts") / "xgboost"
 XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
 SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"
-DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
+DNN_OUTPUT_DIR = first_existing_path(
+    Path("artifacts") / "dnn" / "dnn_outputs",
+    Path("artifacts") / "DNN" / "dnn_outputs",
+)
 FAST_PREDICTION_DIR = Path("artifacts") / "fast_predictions"
 FAST_FORECAST_PATH = FAST_PREDICTION_DIR / "current_forecast.csv"
 FAST_BACKFILL_PATH = FAST_PREDICTION_DIR / "gap_fill_predictions.csv"
@@ -49,10 +61,22 @@ FAST_HORIZON_FORECAST_PATHS = {
 }
 
 NOTEBOOK_SOURCES = {
-    "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
-    "prophet_tuning": DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
-    "xgboost_comparison": DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
-    "dnn_forecasting": DOWNLOADS_DIR / "DNN_Forecasting.ipynb",
+    "prophet_training": first_existing_path(
+        DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
+        Path("artifacts") / "prophet_tuned" / "prophet-model-training-updated.ipynb",
+    ),
+    "prophet_tuning": first_existing_path(
+        DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
+        Path("artifacts") / "prophet_tuned" / "prophet-tuning-resume-after-timeout.ipynb",
+    ),
+    "xgboost_comparison": first_existing_path(
+        DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
+        Path("artifacts") / "xgboost" / "xgboost-run-and-comparison-with-prophet.ipynb",
+    ),
+    "dnn_forecasting": first_existing_path(
+        DOWNLOADS_DIR / "DNN_Forecasting.ipynb",
+        Path("artifacts") / "DNN" / "DNN_Forecasting.ipynb",
+    ),
 }
 
 DATASETS = [
@@ -84,7 +108,7 @@ ARTIFACTS = [
     ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),
     ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
     ("SARIMAX order", SARIMAX_OUTPUT_DIR / "sarimax_order.json"),
-    ("DNN/LSTM notebook", DOWNLOADS_DIR / "DNN_Forecasting.ipynb"),
+    ("DNN/LSTM notebook", NOTEBOOK_SOURCES["dnn_forecasting"]),
     ("DNN/LSTM exported metrics", DNN_OUTPUT_DIR / "dnn_metrics.json"),
     ("DNN/LSTM exported predictions", DNN_OUTPUT_DIR / "dnn_predictions.csv"),
     ("Fast gap-fill predictions", FAST_BACKFILL_PATH),
