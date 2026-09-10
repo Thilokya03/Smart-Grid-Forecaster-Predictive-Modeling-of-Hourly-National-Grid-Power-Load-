@@ -2,15 +2,11 @@ services:
   - type: web
     name: uk-weather-forecast-dashboard
     runtime: docker
-    plan: 1c-2g
-    branch: dev
+    plan: free
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /
-    disk:
-      name: forecast-runtime-storage
-      mountPath: /app/storage
-      sizeGB: 10
     envVars:
       - key: HOST
         value: "0.0.0.0"
