@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK Smart Grid Forecast</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v16">
+</head>
+<body class="public-page">
+  <div class="public-shell">
+    <header class="public-topbar">
+      <a class="brand-mark" href="/">UK Smart Grid Forecast</a>
+      <nav class="public-nav">
+        <a href="/" data-page-link="overview">Overview</a>
+        <a href="/forecast" data-page-link="forecast">Forecast</a>
+        <a href="/forecast/detailed" data-page-link="detailed">Detailed 24h</a>
+        <a href="/forecast/inputs" data-page-link="inputs">Inputs</a>
+        <a href="/settings" data-page-link="settings">Settings</a>
+        <button data-signin="admin">Admin</button>
+        <button data-signin="super-admin">Super Admin</button>
+      </nav>
+    </header>
+
+    <main class="public-main">
+      <section class="public-hero" id="overview" data-public-section="overview forecast">
+        <div class="public-hero-copy">
+          <span class="status-chip">Live forecast view</span>
+          <h1>UK electricity demand forecast</h1>
+          <p>Hourly demand outlook for planning, monitoring, and quick operational awareness across Great Britain.</p>
+        </div>
+        <div id="forecastKpis" class="grid public-kpis"></div>
+      </section>
+
+      <section class="forecast-panel" data-public-section="overview forecast">
+        <h3>Fast Forecast</h3>
+        <div class="toolbar">
+          <button data-horizon="24" class="active">24h</button>
+          <button data-horizon="48">48h</button>
+          <button data-horizon="72">72h</button>
+          <button data-horizon="168">168h</button>
+        </div>
+        <p id="forecastMessage" class="section-note"></p>
+        <div class="chart-card"><h4>Predicted Demand</h4><div id="forecastChart"></div></div>
+        <h4>Daily Outlook</h4>
+        <div id="outlookGrid" class="outlook-grid"></div>
+        <div id="forecastTableSection">
+          <h4>Hourly Table</h4>
+          <div class="table-wrap"><table id="forecastTable"></table></div>
+        </div>
+      </section>
+
+      <section id="detailed" data-public-section="overview detailed">
+        <h3>Detailed 24h Forecast</h3>
+        <div id="detailedKpis" class="grid"></div>
+        <div class="chart-card"><h4>Weighted 24h Demand</h4><div id="detailedChart"></div></div>
+        <div id="detailedComponentsSection">
+          <h4>Weighted Components</h4>
+          <div class="table-wrap"><table id="detailedTable"></table></div>
+        </div>
+      </section>
+
+      <section id="insights" class="insight-section" data-public-section="overview inputs">
+        <h3>Forecast Notes</h3>
+        <div id="insightGrid" class="quote-grid"></div>
+      </section>
+
+      <section id="inputs" data-public-section="overview inputs">
+        <h3>Input Status</h3>
+        <div id="inputKpis" class="grid"></div>
+      </section>
+
+      <section id="events" data-public-section="inputs">
+        <h3>Recent Events</h3>
+        <div id="eventList" class="event-list"></div>
+      </section>
+
+      <section id="settings" class="settings-panel" data-public-section="settings">
+        <h3>Settings</h3>
+        <div class="settings-grid">
+          <label>
+            <span>Default Horizon</span>
+            <select id="settingDefaultHorizon">
+              <option value="24">24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="72">72 hours</option>
+              <option value="168">168 hours</option>
+            </select>
+          </label>
+          <label>
+            <span>Demand Units</span>
+            <select id="settingUnit">
+              <option value="mw">MW</option>
+              <option value="gw">GW</option>
+            </select>
+          </label>
+          <label>
+            <span>Theme</span>
+            <select id="settingTheme">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span>Accent Colour</span>
+            <select id="settingAccent">
+              <option value="green">Racing green</option>
+              <option value="burgundy">Burgundy</option>
+              <option value="navy">Navy</option>
+              <option value="brass">Brass</option>
+              <option value="custom">Custom colour</option>
+            </select>
+          </label>
+          <label>
+            <span>Custom Accent</span>
+            <input id="settingCustomAccent" type="color" value="#0b5d4b">
+          </label>
+          <label>
+            <span>Dashboard Tone</span>
+            <select id="settingTone">
+              <option value="stone">Warm stone</option>
+              <option value="mist">Cool mist</option>
+              <option value="paper">Paper white</option>
+              <option value="night">Night blue</option>
+            </select>
+          </label>
+          <label class="check-setting">
+            <input id="settingCompactRows" type="checkbox">
+            <span>Compact hourly table</span>
+          </label>
+          <label class="check-setting">
+            <input id="settingShowComponents" type="checkbox">
+            <span>Show weighted components</span>
+          </label>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/public_forecast.js?v=2026-08-20-ui-v16"></script>
+</body>
+</html>

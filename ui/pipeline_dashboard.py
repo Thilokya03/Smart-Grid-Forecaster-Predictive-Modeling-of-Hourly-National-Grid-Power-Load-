@@ -5,16 +5,23 @@ import ast
 import html
 import json
 import mimetypes
+import os
 import re
+import secrets
 import subprocess
 import sys
+import threading
+import time
 
 import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-HOST = "127.0.0.1"
-PORT = 8765
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8765"))
+AUTO_PREDICTIONS_ENABLED = os.environ.get("AUTO_PREDICTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+AUTO_PREDICTION_INTERVAL_HOURS = int(os.environ.get("AUTO_PREDICTION_INTERVAL_HOURS", "6"))
+AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", "").strip().lower() in {"1", "true", "yes", "on"}
 DASHBOARD_VERSION = "2026-08-20-ui-v15"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -29,6 +36,17 @@ XGBOOST_DIR = Path("artifacts") / "xgboost"
 XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
 SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"
 DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
+FAST_PREDICTION_DIR = Path("artifacts") / "fast_predictions"
+FAST_FORECAST_PATH = FAST_PREDICTION_DIR / "current_forecast.csv"
+FAST_BACKFILL_PATH = FAST_PREDICTION_DIR / "gap_fill_predictions.csv"
+FAST_SUMMARY_PATH = FAST_PREDICTION_DIR / "fast_prediction_summary.json"
+FAST_DETAILED_24H_PATH = FAST_PREDICTION_DIR / "detailed_weighted_24h_forecast.csv"
+FAST_HORIZON_FORECAST_PATHS = {
+    24: FAST_PREDICTION_DIR / "fast_forecast_24h.csv",
+    48: FAST_PREDICTION_DIR / "fast_forecast_48h.csv",
+    72: FAST_PREDICTION_DIR / "fast_forecast_72h.csv",
+    168: FAST_PREDICTION_DIR / "fast_forecast_168h.csv",
+}
 
 NOTEBOOK_SOURCES = {
     "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
@@ -69,6 +87,11 @@ ARTIFACTS = [
     ("DNN/LSTM notebook", DOWNLOADS_DIR / "DNN_Forecasting.ipynb"),
     ("DNN/LSTM exported metrics", DNN_OUTPUT_DIR / "dnn_metrics.json"),
     ("DNN/LSTM exported predictions", DNN_OUTPUT_DIR / "dnn_predictions.csv"),
+    ("Fast gap-fill predictions", FAST_BACKFILL_PATH),
+    ("Fast current forecast", FAST_FORECAST_PATH),
+    ("Fast detailed 24h forecast", FAST_DETAILED_24H_PATH),
+    ("Fast 168h forecast", FAST_HORIZON_FORECAST_PATHS[168]),
+    ("Fast prediction summary", FAST_SUMMARY_PATH),
 ]
 
 MODEL_OUTPUTS = {
@@ -105,6 +128,19 @@ MODEL_OUTPUTS = {
 }
 
 TASKS = {
+    "refresh_latest_predictions": (
+        "Refresh Latest Predictions Now",
+        [
+            (Path("uk_training_data_prep") / "download_latest_neso_demand.py", True),
+            (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("uk_training_data_prep") / "refresh_local_uk_features.py", False),
+            (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
+            (Path("uk_training_data_prep") / "build_hourly_load_data.py", False),
+            (Path("uk_training_data_prep") / "build_master_training_data.py", False),
+            (Path("uk_training_data_prep") / "build_forecast_feature_data.py", False),
+            (Path("ml_training") / "fast_gap_fill_and_forecast.py", False),
+        ],
+    ),
     "sync_features": (
         "Refresh Local Features + Rebuild Master",
         [
@@ -125,6 +161,10 @@ TASKS = {
     ),
     "build_master": ("Build Master Dataset", [(Path("uk_training_data_prep") / "build_master_training_data.py", False)]),
     "build_forecast_features": ("Build Forecast Feature Dataset", [(Path("uk_training_data_prep") / "build_forecast_feature_data.py", False)]),
+    "fast_gap_fill_forecast": (
+        "Fast Gap Fill + Forecast",
+        [(Path("ml_training") / "fast_gap_fill_and_forecast.py", False)],
+    ),
     "update_weather_forecast": (
         "Update Weather + Forecast Inputs",
         [
@@ -151,7 +191,8 @@ TASKS = {
 }
 
 PIPELINE_ACTIONS = [
-    ("update_all_live", True),
+    ("refresh_latest_predictions", True),
+    ("update_all_live", False),
     ("update_weather_forecast", False),
     ("update_demand", False),
     ("monthly_update", False),
@@ -160,9 +201,35 @@ PIPELINE_ACTIONS = [
     ("build_weather", False),
     ("build_master", False),
     ("build_forecast_features", False),
+    ("fast_gap_fill_forecast", False),
 ]
 
 PERIOD_DAYS = {"last_day": 1, "last_week": 7, "last_month": 30, "last_3_months": 90}
+ROLE_RANK = {"public": 0, "admin": 1, "super_admin": 2}
+PUBLIC_API_PATHS = {
+    "/api/events",
+    "/api/weather-forecast",
+    "/api/forecast-inputs",
+    "/api/v1/forecast/ml",
+}
+ADMIN_API_PATHS = {
+    "/api/model-validation",
+    "/api/notebook-visuals",
+    "/api/prophet-tuned-visuals",
+    "/api/xgboost-visuals",
+    "/api/sarimax-visuals",
+    "/api/dnn-visuals",
+    "/api/v1/forecast/ml/models",
+    "/api/v1/forecast/ml/comparison",
+}
+SUPER_ADMIN_API_PATHS = {
+    "/api/summary",
+    "/api/kpis",
+    "/api/timeseries",
+    "/api/daily-profile",
+    "/api/last-output",
+}
+TASK_LOCK = threading.Lock()
 
 def project_path(relative_path: Path) -> Path:
     return PROJECT_ROOT / relative_path
@@ -1239,9 +1306,27 @@ def ml_model_registry() -> dict:
     sarimax_summary = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")
     dnn_model = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")
     dnn_metrics = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")
+    fast_forecast = project_path(FAST_HORIZON_FORECAST_PATHS[24])
+    detailed_forecast = project_path(FAST_DETAILED_24H_PATH)
 
     return {
         "models": [
+            {
+                "id": "fast_xgboost",
+                "label": "Fast XGBoost Gap Fill + Forecast",
+                "status": "servable" if fast_forecast.exists() else "missing_forecast",
+                "horizons": sorted(FAST_HORIZON_FORECAST_PATHS),
+                "forecast_path": str(FAST_HORIZON_FORECAST_PATHS[24]),
+                "summary_path": str(FAST_SUMMARY_PATH),
+            },
+            {
+                "id": "fast_weighted_24h",
+                "label": "Detailed Weighted 24h Forecast",
+                "status": "servable" if detailed_forecast.exists() else "missing_forecast",
+                "horizons": [24],
+                "forecast_path": str(FAST_DETAILED_24H_PATH),
+                "summary_path": str(FAST_SUMMARY_PATH),
+            },
             {
                 "id": "prophet_baseline",
                 "label": "Prophet v1 Baseline",
@@ -1283,11 +1368,66 @@ def ml_model_registry() -> dict:
 
 
 def ml_forecast_payload(query: dict[str, list[str]]) -> dict:
-    model_id = query.get("model", ["xgboost"])[0]
+    model_id = query.get("model", ["fast_xgboost"])[0]
+    detail = query.get("detail", ["fast"])[0]
     registry = ml_model_registry()["models"]
     model = next((item for item in registry if item["id"] == model_id), None)
     if model is None:
         return {"status": "error", "message": f"Unknown model: {model_id}", "models": registry}
+
+    if model_id in {"fast_xgboost", "fast_weighted_24h"}:
+        try:
+            horizon = int(query.get("horizon", ["24"])[0])
+        except ValueError:
+            return {"status": "error", "message": "horizon must be one of 24, 48, 72, 168.", "models": registry}
+
+        use_weighted = model_id == "fast_weighted_24h" or detail in {"weighted", "detailed"}
+        if use_weighted:
+            horizon = 24
+            forecast_path = project_path(FAST_DETAILED_24H_PATH)
+        else:
+            if horizon not in FAST_HORIZON_FORECAST_PATHS:
+                return {"status": "error", "message": "horizon must be one of 24, 48, 72, 168.", "models": registry}
+            forecast_path = project_path(FAST_HORIZON_FORECAST_PATHS[horizon])
+        summary = load_json_file(FAST_SUMMARY_PATH)
+        if not forecast_path.exists():
+            return {
+                "status": "missing_forecast",
+                "model": model,
+                "forecast": [],
+                "message": "Run Fast Gap Fill + Forecast first.",
+            }
+        frame = pd.read_csv(forecast_path, low_memory=False)
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame = frame.dropna(subset=["timestamp", "predicted_demand_mw"]).sort_values("timestamp")
+        forecast_rows = []
+        for _, row in frame.iterrows():
+            item = {
+                "timestamp": row["timestamp"].strftime("%Y-%m-%d %H:%M"),
+                "predicted_demand_mw": safe_float(row.get("predicted_demand_mw")),
+                "model": display_text(row.get("model", row.get("source", model_id))),
+            }
+            for column in [
+                "fast_xgboost_mw",
+                "lag_24h_mw",
+                "lag_168h_mw",
+                "weight_fast_xgboost",
+                "weight_lag_24h",
+                "weight_lag_168h",
+            ]:
+                if column in frame.columns:
+                    item[column] = safe_float(row.get(column))
+            forecast_rows.append(item)
+        return {
+            "status": "ready",
+            "model": model,
+            "horizon": horizon,
+            "detail": "weighted_24h" if use_weighted else "fast",
+            "available_horizons": sorted(FAST_HORIZON_FORECAST_PATHS),
+            "summary": summary,
+            "forecast": forecast_rows,
+            "message": f"Forecast range: {frame['timestamp'].min()} to {frame['timestamp'].max()}",
+        }
 
     return {
         "status": "not_ready",
@@ -1367,7 +1507,29 @@ def downsample_model_predictions(frame: pd.DataFrame, max_points: int = 420) -> 
     return frame.set_index("ds").resample(f"{bucket_hours}h").mean(numeric_only=True).dropna(how="all").reset_index()
 
 
+def seconds_until_next_auto_prediction() -> float:
+    interval = max(1, AUTO_PREDICTION_INTERVAL_HOURS)
+    now = pd.Timestamp.now(tz="Europe/London")
+    next_hour = ((now.hour // interval) + 1) * interval
+    next_day = now.normalize()
+    if next_hour >= 24:
+        next_day = next_day + pd.Timedelta(days=1)
+        next_hour = 0
+    next_run = next_day + pd.Timedelta(hours=next_hour)
+    return max(1.0, (next_run - now).total_seconds())
+
+
 def run_task(task_key: str) -> str:
+    if not TASK_LOCK.acquire(blocking=False):
+        return "Another pipeline task is already running. Try again after it finishes."
+
+    try:
+        return run_task_unlocked(task_key)
+    finally:
+        TASK_LOCK.release()
+
+
+def run_task_unlocked(task_key: str) -> str:
     task = TASKS.get(task_key)
     if task is None:
         return f"Unknown task: {task_key}"
@@ -1393,6 +1555,81 @@ def run_task(task_key: str) -> str:
                 continue
             break
     return "\n".join(lines)
+
+
+def automatic_prediction_loop() -> None:
+    if AUTO_PREDICTION_RUN_ON_START:
+        DashboardHandler.last_output = "[Automatic latest prediction run on startup]\n" + run_task("refresh_latest_predictions")
+
+    while True:
+        wait_seconds = seconds_until_next_auto_prediction()
+        time.sleep(wait_seconds)
+        started = pd.Timestamp.now(tz="Europe/London").strftime("%Y-%m-%d %H:%M:%S %Z")
+        output = run_task("refresh_latest_predictions")
+        DashboardHandler.last_output = f"[Automatic latest prediction run at {started}]\n{output}"
+
+
+def start_automatic_predictions() -> None:
+    if not AUTO_PREDICTIONS_ENABLED:
+        return
+    thread = threading.Thread(target=automatic_prediction_loop, name="automatic-predictions", daemon=True)
+    thread.start()
+
+
+def token_from_query(query: dict[str, list[str]]) -> str:
+    return query.get("token", [""])[0].strip()
+
+
+def request_role(query: dict[str, list[str]], headers) -> str:
+    token = token_from_query(query) or headers.get("X-Dashboard-Token", "").strip()
+    admin_token = os.environ.get("DASHBOARD_ADMIN_TOKEN", "").strip()
+    super_token = os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN", "").strip()
+
+    if not admin_token and not super_token:
+        return "super_admin"
+    if super_token and secrets.compare_digest(token, super_token):
+        return "super_admin"
+    if admin_token and secrets.compare_digest(token, admin_token):
+        return "admin"
+    return "public"
+
+
+def role_allows(role: str, required: str) -> bool:
+    return ROLE_RANK.get(role, 0) >= ROLE_RANK.get(required, 0)
+
+
+def required_role_for_api(path: str) -> str:
+    if path in PUBLIC_API_PATHS:
+        return "public"
+    if path in ADMIN_API_PATHS:
+        return "admin"
+    if path in SUPER_ADMIN_API_PATHS:
+        return "super_admin"
+    return "super_admin"
+
+
+def required_role_for_page(path: str) -> str:
+    public_pages = {
+        "",
+        "/",
+        "/public",
+        "/public/",
+        "/forecast",
+        "/forecast/",
+        "/forecast/detailed",
+        "/forecast/detailed/",
+        "/forecast/inputs",
+        "/forecast/inputs/",
+        "/settings",
+        "/settings/",
+    }
+    if path in public_pages or path.startswith("/static/"):
+        return "public"
+    if path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
+        return "admin"
+    if path in {"/super-admin", "/super-admin/"}:
+        return "super_admin"
+    return "public"
 
 
 def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
@@ -1442,9 +1679,25 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
 
 
 def read_static_file(path: str) -> tuple[bytes, str]:
-    if path in {"", "/"}:
+    public_pages = {
+        "",
+        "/",
+        "/public",
+        "/public/",
+        "/forecast",
+        "/forecast/",
+        "/forecast/detailed",
+        "/forecast/detailed/",
+        "/forecast/inputs",
+        "/forecast/inputs/",
+        "/settings",
+        "/settings/",
+    }
+    if path in public_pages:
+        file_path = STATIC_DIR / "public.html"
+    elif path in {"/super-admin", "/super-admin/"}:
         file_path = STATIC_DIR / "index.html"
-    elif path in {"/model-comparison", "/model-comparison/"}:
+    elif path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
         file_path = STATIC_DIR / "model_comparison.html"
     elif path.startswith("/static/"):
         file_path = STATIC_DIR / path.removeprefix("/static/")
@@ -1719,15 +1972,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def send_forbidden(self, required_role: str) -> None:
+        message = {
+            "status": "forbidden",
+            "required_role": required_role,
+            "message": f"This route requires {required_role.replace('_', ' ')} access.",
+        }
+        content = json.dumps(message).encode("utf-8")
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(content)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        role = request_role(query, self.headers)
         if parsed.path.startswith("/api/"):
+            required_role = required_role_for_api(parsed.path)
+            if not role_allows(role, required_role):
+                self.send_forbidden(required_role)
+                return
             try:
-                self.send_json(api_payload(parsed.path, parse_qs(parsed.query)))
+                self.send_json(api_payload(parsed.path, query))
             except KeyError:
                 self.send_error(404)
             except Exception as exc:
                 self.send_error(500, str(exc))
+            return
+
+        required_role = required_role_for_page(parsed.path)
+        if not role_allows(role, required_role):
+            self.send_forbidden(required_role)
             return
 
         try:
@@ -1750,16 +2028,31 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length).decode("utf-8")
-        task_key = parse_qs(body).get("task", [""])[0]
+        form = parse_qs(body)
+        query = parse_qs(parsed.query)
+        query["token"] = form.get("token", query.get("token", [""]))
+        role = request_role(query, self.headers)
+        if not role_allows(role, "super_admin"):
+            self.send_forbidden("super_admin")
+            return
+
+        task_key = form.get("task", [""])[0]
         DashboardHandler.last_output = run_task(task_key)
         self.send_response(303)
-        self.send_header("Location", "/")
+        token = token_from_query(query)
+        self.send_header("Location", f"/super-admin?token={token}" if token else "/super-admin")
         self.end_headers()
 
 
 def main() -> None:
+    start_automatic_predictions()
     server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
     print(f"Dashboard running at http://{HOST}:{PORT}")
+    if AUTO_PREDICTIONS_ENABLED:
+        print(
+            "Automatic latest predictions enabled "
+            f"every {AUTO_PREDICTION_INTERVAL_HOURS} hours on UK-time boundaries."
+        )
     server.serve_forever()
 
 

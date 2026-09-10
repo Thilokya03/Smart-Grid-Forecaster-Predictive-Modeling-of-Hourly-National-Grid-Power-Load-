@@ -222,7 +222,88 @@ Then open:
 http://127.0.0.1:8765
 ```
 
-The UI shows row counts, date ranges, modified times, and buttons for the sync/build scripts.
+The root URL shows the public forecast page. Use `/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>` for row counts, date ranges, modified times, and sync/build buttons.
+
+## Fast Predictions and Access Roles
+
+Run the quick forecast path:
+
+```powershell
+python ml_training\fast_gap_fill_and_forecast.py
+```
+
+To generate the latest predictions after new weather/demand files are available, run:
+
+```powershell
+python weather_pipeline\api_weather.py
+python uk_training_data_prep\build_weather_feature_data.py
+python uk_training_data_prep\build_forecast_feature_data.py
+python ml_training\fast_gap_fill_and_forecast.py
+```
+
+From the browser, super admin can use:
+
+1. `Update Weather + Forecast Inputs`
+2. `Fast Gap Fill + Forecast`
+
+It backfills from `2026-07-01` to the current UK hour, then saves fast forecasts for `24`, `48`, `72`, and `168` hours. It also saves a detailed weighted 24-hour forecast.
+
+Outputs:
+
+- `artifacts/fast_predictions/gap_fill_predictions.csv`
+- `artifacts/fast_predictions/fast_forecast_24h.csv`
+- `artifacts/fast_predictions/fast_forecast_48h.csv`
+- `artifacts/fast_predictions/fast_forecast_72h.csv`
+- `artifacts/fast_predictions/fast_forecast_168h.csv`
+- `artifacts/fast_predictions/detailed_weighted_24h_forecast.csv`
+
+Access levels:
+
+- Public: `http://127.0.0.1:8765/`
+- Admin model comparison: `http://127.0.0.1:8765/admin?token=<DASHBOARD_ADMIN_TOKEN>`
+- Super admin pipeline controls: `http://127.0.0.1:8765/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>`
+
+Public pages:
+
+- `/`
+- `/forecast`
+- `/forecast/detailed`
+- `/forecast/inputs`
+- `/settings`
+
+The public settings page supports light/dark/custom themes, accent colour, dashboard tone, MW/GW display, compact rows, and weighted-component visibility. Admin and super-admin pages read the same browser settings for theme/accent styling.
+
+Set `DASHBOARD_ADMIN_TOKEN` and `DASHBOARD_SUPER_ADMIN_TOKEN` before exposing the dashboard beyond local development.
+
+Local PowerShell example:
+
+```powershell
+$env:DASHBOARD_ADMIN_TOKEN = "change-me-admin"
+$env:DASHBOARD_SUPER_ADMIN_TOKEN = "change-me-super"
+python -m ui.pipeline_dashboard
+```
+
+Docker can read the same values from your shell or from a local `.env` file:
+
+```text
+DASHBOARD_ADMIN_TOKEN=change-me-admin
+DASHBOARD_SUPER_ADMIN_TOKEN=change-me-super
+AUTO_PREDICTIONS_ENABLED=true
+AUTO_PREDICTION_INTERVAL_HOURS=6
+AUTO_PREDICTION_RUN_ON_START=false
+```
+
+With `AUTO_PREDICTIONS_ENABLED=true`, the dashboard process automatically runs `Refresh Latest Predictions Now` every 6 hours on UK-time boundaries: `00:00`, `06:00`, `12:00`, and `18:00`. Set `AUTO_PREDICTION_RUN_ON_START=true` if you also want one refresh immediately when the dashboard starts.
+
+Super-admins can still run the same process immediately from:
+
+```text
+http://127.0.0.1:8765/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
+```
+
+Use the `Refresh Latest Predictions Now` button. If an automatic refresh is already running, the dashboard will reject the overlapping run and ask you to try again after it finishes.
+
+NESO demand data can sometimes lag behind real time. The automatic latest-prediction task therefore treats the NESO download step as non-blocking: if fresh demand is not available, it continues with the latest cached demand, refreshes weather/features, fills the missing demand interval as a nowcast bridge, and then produces the 24/48/72/168 hour forecasts. The public forecast page shows `Latest Actual Demand` and `Demand Data Lag` so users can see when part of the forecast depends on that nowcast bridge.
 
 ## Docker
 

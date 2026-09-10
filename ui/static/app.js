@@ -1,9 +1,61 @@
 let selectedPeriod = "last_week";
 let selectedModel = "prophet_v1";
 const chartState = {};
+const accessToken = new URLSearchParams(window.location.search).get("token") || "";
+let publicSettings = {};
+try {
+  publicSettings = JSON.parse(localStorage.getItem("ukForecastPublicSettings") || "{}");
+} catch {
+  publicSettings = {};
+}
+
+function applyStoredTheme() {
+  const accents = {
+    green: "#0b5d4b",
+    burgundy: "#8a1538",
+    navy: "#152238",
+    brass: "#b88a2d",
+  };
+  document.documentElement.dataset.theme = publicSettings.theme || "light";
+  document.documentElement.dataset.tone = publicSettings.tone || "stone";
+  document.documentElement.style.setProperty(
+    "--accent",
+    publicSettings.accent === "custom" ? publicSettings.customAccent || "#0b5d4b" : accents[publicSettings.accent] || accents.green
+  );
+}
+
+function withAccessToken(url) {
+  if (!accessToken) return url;
+  const parsed = new URL(url, window.location.origin);
+  parsed.searchParams.set("token", accessToken);
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+function attachAccessTokenToForms() {
+  if (!accessToken) return;
+  document.querySelectorAll("form").forEach((form) => {
+    let input = form.querySelector("input[name='token']");
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "token";
+      form.appendChild(input);
+    }
+    input.value = accessToken;
+  });
+}
+
+function attachAccessTokenToLinks() {
+  if (!accessToken) return;
+  document.querySelectorAll("a[href^='/admin'], a[href^='/model-comparison'], a[href^='/super-admin']").forEach((link) => {
+    const parsed = new URL(link.getAttribute("href"), window.location.origin);
+    parsed.searchParams.set("token", accessToken);
+    link.href = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  });
+}
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(withAccessToken(url));
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -439,4 +491,7 @@ document.querySelectorAll("[data-model]").forEach((button) => {
   });
 });
 
+applyStoredTheme();
+attachAccessTokenToForms();
+attachAccessTokenToLinks();
 refreshAll().catch((error) => console.error(error));

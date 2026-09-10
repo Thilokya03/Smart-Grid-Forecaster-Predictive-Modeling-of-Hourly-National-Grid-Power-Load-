@@ -1,0 +1,1020 @@
+[1mdiff --cc .gitignore[m
+[1mindex d85091f,a79f2b5..0000000[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@@ -11,7 -11,6 +11,10 @@@[m [m__pycache__[m
+  .venv/[m
+  venv/[m
+  env/[m
+[32m++<<<<<<< HEAD[m
+[32m +.venv-gpu/[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  [m
+  # Notebook/runtime caches[m
+  .ipynb_checkpoints/[m
+[1mdiff --cc README.md[m
+[1mindex ab61f4b,83198ae..0000000[m
+[1m--- a/README.md[m
+[1m+++ b/README.md[m
+[36m@@@ -1,44 -1,259 +1,297 @@@[m
+[31m -# UK Weather Pipeline[m
+[32m +# UK Smart Grid Forecaster[m
+  [m
+[31m -This folder downloads weather for 10 UK cities, averages those city values into one hourly `UK_Average` dataset, and keeps the July-onward bridge data updated.[m
+[32m +This project builds a UK electricity demand forecasting pipeline with weather, calendar, economic, and lag features. It includes data preparation scripts, model artifacts, comparison dashboards, and exporter scripts for final validation assets.[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +## Current State[m
+[32m++=======[m
+[32m+ <<<<<<< HEAD[m
+[32m+ ## Project Layout[m
+[32m+ [m
+[32m+ - `weather_pipeline/` - weather download, rolling update, and bridge maintenance scripts[m
+[32m+ - `uk_training_data_prep/` - load, holiday/economic sync, and master dataset build scripts[m
+[32m+ - `ml_training/` - Prophet training scripts and Kaggle notebook[m
+[32m+ - `data/weather_historical/` - generated historical UK city and average weather CSVs[m
+[32m+ - `data/weather_runtime/` - generated rolling weather, bridge CSVs, and local weather DB[m
+[32m+ - `data/external/uk_features/` - synced UK calendar and economic feature files[m
+[32m+ - `data/processed/` - generated `master_training_data.csv`[m
+[32m+ - `artifacts/` - generated model files, validation predictions, and metrics[m
+[32m+ [m
+[32m+ =======[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ ## Run Order[m
+[32m++>>>>>>> origin/dev[m
+[32m +[m
+[32m +- Master training dataset: `data/processed/master_training_data.csv`[m
+[32m +- Forecast feature dataset: `data/processed/forecast_feature_data.csv`[m
+[32m +- Local dashboard: `ui/pipeline_dashboard.py`[m
+[32m +- Research paper draft: `docs/research_paper_draft.md`[m
+[32m +- Main documentation index: `docs/README.md`[m
+[32m +[m
+[32m +Current fold-matched CV leader:[m
+[32m +[m
+[32m +| Rank | Model | Mean RMSE | Mean MAPE |[m
+[32m +|---:|---|---:|---:|[m
+[32m +| 1 | XGBoost | 1111.55 MW | 3.24% |[m
+[32m +| 2 | Prophet tuned | 1508.89 MW | 4.48% |[m
+[32m +| 3 | SARIMAX | 2088.57 MW | 6.11% |[m
+  [m
+[31m -### 1. Historical base data[m
+[32m +DNN/LSTM is available as notebook evidence, but still needs fold-matched CV exports before it should be ranked against the other models.[m
+  [m
+[31m -Run this when you need to build or rebuild the long historical weather files up to `2026-06-30`.[m
+[32m +## Run Dashboard[m
+  [m
+  ```powershell[m
+[32m+ <<<<<<< HEAD[m
+[32m +.\.venv\Scripts\python.exe ui\pipeline_dashboard.py[m
+[32m++=======[m
+[32m++<<<<<<< HEAD[m
+[32m+ python weather_pipeline\weather_data_extraction.py[m
+[32m+ =======[m
+[32m+ python weather_data_extraction.py[m
+[32m+ >>>>>>> origin/dev[m
+[32m++>>>>>>> origin/dev[m
+  ```[m
+  [m
+[31m -Outputs:[m
+[32m +Open:[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +```text[m
+[32m +http://127.0.0.1:8765[m
+[32m +http://127.0.0.1:8765/model-comparison[m
+[32m++=======[m
+[32m+ <<<<<<< HEAD[m
+[32m+ - `data/weather_historical/<City>.csv`[m
+[32m+ - `data/weather_historical/uk_average_weather.csv`[m
+[32m+ =======[m
+[32m+ - `Weather_Data_Britain/<City>.csv`[m
+[32m+ - `Weather_Data_Britain/uk_average_weather.csv`[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ [m
+[32m+ ### 2. Bridge backfill from July onward[m
+[32m+ [m
+[32m+ Run this if the bridge CSV is missing older July-onward historical hours, or when creating the bridge CSV for the first time.[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ <<<<<<< HEAD[m
+[32m+ python weather_pipeline\bridge_weather_from_july.py[m
+[32m+ =======[m
+[32m+ python bridge_weather_from_july.py[m
+[32m+ >>>>>>> origin/dev[m
+[32m++>>>>>>> origin/dev[m
+  ```[m
+  [m
+[31m -Outputs:[m
+[32m +## Documentation[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +Start with:[m
+[32m +[m
+[32m +```text[m
+[32m +docs/README.md[m
+[32m +```[m
+[32m +[m
+[32m +That file links to the setup guide, pipeline guide, model comparison status, API/dashboard guide, final testing plan, submission checklist, and research paper draft.[m
+[32m++=======[m
+[32m+ <<<<<<< HEAD[m
+[32m+ - `data/weather_runtime/july_bridge_weather_data.csv`[m
+[32m+ - `data/weather_runtime/july_bridge_last_run.txt`[m
+[32m+ =======[m
+[32m+ - `july_bridge_weather_data.csv`[m
+[32m+ - `july_bridge_last_run.txt`[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ [m
+[32m+ The bridge file stores one averaged `UK_Average` row per hour.[m
+[32m+ [m
+[32m+ ### 3. Rolling current weather update[m
+[32m+ [m
+[32m+ Run this for the latest 7 days of history and the next 7 days of forecast.[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ <<<<<<< HEAD[m
+[32m+ python weather_pipeline\api_weather.py[m
+[32m+ =======[m
+[32m+ python api_weather.py[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Outputs:[m
+[32m+ [m
+[32m+ <<<<<<< HEAD[m
+[32m+ - `data/weather_runtime/rolling_historical_weather.csv`[m
+[32m+ - `data/weather_runtime/rolling_forecast_weather.csv`[m
+[32m+ - `data/weather_runtime/weather_pipeline.db`[m
+[32m+ [m
+[32m+ After each successful update, this script automatically runs bridge maintenance so new confirmed historical rows are added to `data/weather_runtime/july_bridge_weather_data.csv`.[m
+[32m+ [m
+[32m+ ### 4. Manual bridge maintenance[m
+[32m+ [m
+[32m+ Usually this is handled by `api_weather.py`. Run this manually only if you already have a fresh `data/weather_runtime/rolling_historical_weather.csv` and want to update the bridge without fetching weather again.[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ python weather_pipeline\maintain_weather_bridge_csv.py[m
+[32m+ =======[m
+[32m+ - `rolling_historical_weather.csv`[m
+[32m+ - `rolling_forecast_weather.csv`[m
+[32m+ - `weather_pipeline.db`[m
+[32m+ [m
+[32m+ After each successful update, this script automatically runs bridge maintenance so new confirmed historical rows are added to `july_bridge_weather_data.csv`.[m
+[32m+ [m
+[32m+ ### 4. Manual bridge maintenance[m
+[32m+ [m
+[32m+ Usually this is handled by `api_weather.py`. Run this manually only if you already have a fresh `rolling_historical_weather.csv` and want to update the bridge without fetching weather again.[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ python maintain_weather_bridge_csv.py[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Outputs:[m
+[32m+ [m
+[32m+ <<<<<<< HEAD[m
+[32m+ - Updated `data/weather_runtime/july_bridge_weather_data.csv`[m
+[32m+ - `data/weather_runtime/july_bridge_last_update.txt`[m
+[32m+ =======[m
+[32m+ - Updated `july_bridge_weather_data.csv`[m
+[32m+ - `july_bridge_last_update.txt`[m
+[32m+ >>>>>>> origin/dev[m
+[32m+ [m
+[32m+ ## Normal Daily Use[m
+[32m+ [m
+[32m+ For normal updates, run:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ <<<<<<< HEAD[m
+[32m+ python weather_pipeline\api_weather.py[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Use `weather_pipeline\bridge_weather_from_july.py` only when there is an older missing gap that the rolling 7-day history can no longer cover.[m
+[32m+ [m
+[32m+ ## Monthly Dataset Update[m
+[32m+ [m
+[32m+ At the start of a new month, place the latest NESO demand CSV in `Downloads` using one of these names:[m
+[32m+ [m
+[32m+ - `demanddata_YYYY.csv`[m
+[32m+ - `demanddataupdate_YYYY.csv`[m
+[32m+ [m
+[32m+ Then run:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ python uk_training_data_prep\run_monthly_dataset_update.py[m
+[32m+ ```[m
+[32m+ [m
+[32m+ This runs:[m
+[32m+ [m
+[32m+ - local UK holiday/economic feature refresh[m
+[32m+ - combined weather feature rebuild[m
+[32m+ - hourly demand rebuild[m
+[32m+ - master training dataset rebuild[m
+[32m+ - forecast feature dataset rebuild[m
+[32m+ [m
+[32m+ The local feature refresh reads the existing source files in `data/external/uk_features` and regenerates the project-ready `2010_onwards` files. The GitHub release synchronizer is kept separately for later online updates.[m
+[32m+ [m
+[32m+ The final master file is:[m
+[32m+ [m
+[32m+ - `data/processed/master_training_data.csv`[m
+[32m+ [m
+[32m+ The prediction input file is:[m
+[32m+ [m
+[32m+ - `data/processed/forecast_feature_data.csv`[m
+[32m+ [m
+[32m+ `master_training_data.csv` contains historical rows with `demand_mw` for training. `forecast_feature_data.csv` contains future weather timestamps joined with calendar/holiday and economic features for inference.[m
+[32m+ [m
+[32m+ ## Hourly Load Data[m
+[32m+ [m
+[32m+ To rebuild only the hourly UK load file, run:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ python uk_training_data_prep\build_hourly_load_data.py[m
+[32m+ ```[m
+[32m+ [m
+[32m+ This reads NESO demand files from:[m
+[32m+ [m
+[32m+ - `data/raw/neso/`[m
+[32m+ - your user `Downloads` folder, or the folder set in `DEMAND_INPUT_FOLDER`[m
+[32m+ [m
+[32m+ Outputs:[m
+[32m+ [m
+[32m+ - `data/uk_load_hourly.csv`[m
+[32m+ - `data/uk_load_2010_YYYY_MM_DD_hourly.csv`[m
+[32m+ [m
+[32m+ The load builder caps output at the current UTC hour. This prevents future zero rows from NESO update files being written into `uk_load_hourly.csv`. Old timestamped `uk_load_2010_*_hourly.csv` files are deleted before the newest one is created.[m
+[32m+ [m
+[32m+ To refresh only the local holiday/economic feature copies and rebuild the master dataset from the browser, use:[m
+[32m+ [m
+[32m+ - `Refresh Local Features + Rebuild Master`[m
+[32m+ [m
+[32m+ By default the monthly runner does not call the live weather API. If you want the monthly update to fetch fresh rolling weather as well, set this in `uk_training_data_prep/run_monthly_dataset_update.py`:[m
+[32m+ [m
+[32m+ ```python[m
+[32m+ RUN_WEATHER_API_UPDATE = True[m
+[32m+ ```[m
+[32m+ [m
+[32m+ ## Yearly Rolling Window[m
+[32m+ [m
+[32m+ `build_master_training_data.py` applies a yearly rolling training window:[m
+[32m+ [m
+[32m+ ```python[m
+[32m+ ENABLE_YEARLY_ROLLING_WINDOW = True[m
+[32m+ ROLLING_WINDOW_YEARS_BEFORE_CURRENT_YEAR = 16[m
+[32m+ ```[m
+[32m+ [m
+[32m+ That means:[m
+[32m+ [m
+[32m+ - during 2026, the master dataset starts at `2010-01-01`[m
+[32m+ - on `2027-01-01`, it starts at `2011-01-01`[m
+[32m+ - on `2028-01-01`, it starts at `2012-01-01`[m
+[32m+ [m
+[32m+ This keeps the dataset current without growing forever.[m
+[32m+ [m
+[32m+ ## Local Pipeline UI[m
+[32m+ [m
+[32m+ Run this to inspect dataset freshness and trigger update steps from a browser:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ python ui\pipeline_dashboard.py[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Then open:[m
+[32m+ [m
+[32m+ ```text[m
+[32m+ http://127.0.0.1:8765[m
+[32m+ ```[m
+[32m+ [m
+[32m+ The UI shows row counts, date ranges, modified times, and buttons for the sync/build scripts.[m
+[32m+ [m
+[32m+ ## Docker[m
+[32m+ [m
+[32m+ Build and run the local UI container:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ docker compose up --build[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Then open:[m
+[32m+ [m
+[32m+ ```text[m
+[32m+ http://127.0.0.1:8765[m
+[32m+ ```[m
+[32m+ [m
+[32m+ The compose file mounts:[m
+[32m+ [m
+[32m+ - `./data` to `/app/data`[m
+[32m+ - `./artifacts` to `/app/artifacts`[m
+[32m+ - your Windows `Downloads` folder to `/input/demand`[m
+[32m+ [m
+[32m+ The demand builder reads `DEMAND_INPUT_FOLDER`, so inside Docker it uses `/input/demand`, while local runs default to your user `Downloads` folder.[m
+[32m+ [m
+[32m+ Stop the container:[m
+[32m+ [m
+[32m+ ```powershell[m
+[32m+ docker compose down[m
+[32m+ ```[m
+[32m+ =======[m
+[32m+ python api_weather.py[m
+[32m+ ```[m
+[32m+ [m
+[32m+ Use `bridge_weather_from_july.py` only when there is an older missing gap that the rolling 7-day history can no longer cover.[m
+[32m+ >>>>>>> origin/dev[m
+[32m++>>>>>>> origin/dev[m
+[1mdiff --cc docker-compose.yml[m
+[1mindex cca7138,de8b71a..0000000[m
+[1m--- a/docker-compose.yml[m
+[1m+++ b/docker-compose.yml[m
+[36m@@@ -1,7 -1,9 +1,15 @@@[m
+  services:[m
+[32m++<<<<<<< HEAD[m
+[32m +  pipeline-api:[m
+[32m +    build: .[m
+[32m +    container_name: uk-weather-pipeline-api[m
+[32m++=======[m
+[32m+   pipeline-ui:[m
+[32m+     build: .[m
+[32m+     container_name: uk-weather-pipeline-ui[m
+[32m+     ports:[m
+[32m+       - "8765:8765"[m
+[32m++>>>>>>> origin/dev[m
+      environment:[m
+        DEMAND_INPUT_FOLDER: /input/demand[m
+      volumes:[m
+[36m@@@ -9,14 -11,3 +17,17 @@@[m
+        - ./artifacts:/app/artifacts[m
+        - ${USERPROFILE}/Downloads:/input/demand:ro[m
+      restart: unless-stopped[m
+[32m++<<<<<<< HEAD[m
+[32m +[m
+[32m +  pipeline-frontend:[m
+[32m +    build:[m
+[32m +      context: .[m
+[32m +      dockerfile: ui/Dockerfile[m
+[32m +    container_name: uk-weather-pipeline-frontend[m
+[32m +    depends_on:[m
+[32m +      - pipeline-api[m
+[32m +    ports:[m
+[32m +      - "8765:80"[m
+[32m +    restart: unless-stopped[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+[1mdiff --cc requirements.txt[m
+[1mindex 793e478,28d933d..0000000[m
+[1m--- a/requirements.txt[m
+[1m+++ b/requirements.txt[m
+[36m@@@ -2,4 -2,3 +2,7 @@@[m [mpanda[m
+  requests[m
+  tqdm[m
+  prophet[m
+[32m++<<<<<<< HEAD[m
+[32m +torch==2.13.0[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+[1mdiff --cc ui/pipeline_dashboard.py[m
+[1mindex b3cba79,db94d91..0000000[m
+[1m--- a/ui/pipeline_dashboard.py[m
+[1m+++ b/ui/pipeline_dashboard.py[m
+[36m@@@ -25,16 -25,13 +25,24 @@@[m [mHOLIDAYS_PATH = Path("data") / "externa[m
+  ECONOMIC_PATH = Path("data") / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"[m
+  DOWNLOADS_DIR = Path.home() / "Downloads"[m
+  PROPHET_TUNED_DIR = Path("artifacts") / "prophet_tuned" / "prophet_outputs"[m
+[32m++<<<<<<< HEAD[m
+[32m +XGBOOST_DIR = Path("artifacts") / "xgboost"[m
+[32m +XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"[m
+[32m +SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"[m
+[32m +DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"[m
+[32m++=======[m
+[32m+ XGBOOST_OUTPUT_DIR = Path("artifacts") / "xgboost_model" / "xgboost_outputs"[m
+[32m+ SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"[m
+[32m++>>>>>>> origin/dev[m
+  [m
+  NOTEBOOK_SOURCES = {[m
+      "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",[m
+      "prophet_tuning": DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",[m
+      "xgboost_comparison": DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",[m
+[32m++<<<<<<< HEAD[m
+[32m +    "dnn_forecasting": DOWNLOADS_DIR / "DNN_Forecasting.ipynb",[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  }[m
+  [m
+  DATASETS = [[m
+[36m@@@ -66,9 -63,6 +74,12 @@@[m [mARTIFACTS = [m
+      ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),[m
+      ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),[m
+      ("SARIMAX order", SARIMAX_OUTPUT_DIR / "sarimax_order.json"),[m
+[32m++<<<<<<< HEAD[m
+[32m +    ("DNN/LSTM notebook", DOWNLOADS_DIR / "DNN_Forecasting.ipynb"),[m
+[32m +    ("DNN/LSTM exported metrics", DNN_OUTPUT_DIR / "dnn_metrics.json"),[m
+[32m +    ("DNN/LSTM exported predictions", DNN_OUTPUT_DIR / "dnn_predictions.csv"),[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  ][m
+  [m
+  MODEL_OUTPUTS = {[m
+[36m@@@ -77,11 -71,6 +88,14 @@@[m
+          "metrics": Path("artifacts") / "prophet_baseline" / "metrics.json",[m
+          "predictions": Path("artifacts") / "prophet_baseline" / "validation_predictions.csv",[m
+      },[m
+[32m++<<<<<<< HEAD[m
+[32m +    "prophet_tuned": {[m
+[32m +        "label": "Prophet Tuned CV Candidate",[m
+[32m +        "metrics": PROPHET_TUNED_DIR / "best_prophet_config.json",[m
+[32m +        "predictions": Path("artifacts") / "prophet_tuned" / "validation_predictions.csv",[m
+[32m +    },[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+      "prophet_v2": {[m
+          "label": "Prophet v2",[m
+          "metrics": Path("artifacts") / "prophet_v2" / "metrics.json",[m
+[36m@@@ -89,19 -78,14 +103,27 @@@[m
+      },[m
+      "xgboost": {[m
+          "label": "XGBoost CV Winner",[m
+[32m++<<<<<<< HEAD[m
+[32m +        "metrics": XGBOOST_DIR / "validation_metrics.csv",[m
+[32m +        "predictions": XGBOOST_DIR / "validation_predictions.csv",[m
+[32m++=======[m
+[32m+         "metrics": XGBOOST_OUTPUT_DIR / "best_xgb_config.json",[m
+[32m+         "predictions": Path("artifacts") / "xgboost" / "validation_predictions.csv",[m
+[32m++>>>>>>> origin/dev[m
+      },[m
+      "sarimax": {[m
+          "label": "SARIMAX CV Candidate",[m
+          "metrics": SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json",[m
+          "predictions": SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv",[m
+      },[m
+[32m++<<<<<<< HEAD[m
+[32m +    "dnn": {[m
+[32m +        "label": "DNN/LSTM CV Candidate",[m
+[32m +        "metrics": DNN_OUTPUT_DIR / "dnn_metrics.json",[m
+[32m +        "predictions": DNN_OUTPUT_DIR / "dnn_predictions.csv",[m
+[32m +    },[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  }[m
+  [m
+  TASKS = {[m
+[36m@@@ -224,26 -208,13 +246,36 @@@[m [mdef load_json_file(relative_path: Path[m
+  def normalize_metric_payload(payload: dict) -> dict:[m
+      metrics = payload.get("metrics", payload)[m
+      return {[m
+[32m++<<<<<<< HEAD[m
+[32m +        "mae": round_value(metrics.get("mae", metrics.get("mean_cv_mae", metrics.get("mean_mae", "")))),[m
+[32m +        "rmse": round_value(metrics.get("rmse", metrics.get("mean_cv_rmse", metrics.get("mean_rmse", "")))),[m
+[32m +        "mape": round_value(metrics.get("mape", metrics.get("mean_cv_mape", metrics.get("mean_mape", "")))),[m
+[32m +        "r2": round_value(metrics.get("r2", metrics.get("mean_cv_r2", metrics.get("mean_r2", ""))), 4),[m
+[32m +    }[m
+[32m +[m
+[32m +[m
+[32m +def load_metrics_file(relative_path: Path) -> dict:[m
+[32m +    path = project_path(relative_path)[m
+[32m +    if not path.exists():[m
+[32m +        return {}[m
+[32m +    if path.suffix.lower() == ".csv":[m
+[32m +        frame = pd.read_csv(path)[m
+[32m +        if frame.empty:[m
+[32m +            return {}[m
+[32m +        return frame.iloc[0].dropna().to_dict()[m
+[32m +    with path.open(encoding="utf-8") as file:[m
+[32m +        return json.load(file)[m
+[32m +[m
+[32m +[m
+[32m++=======[m
+[32m+         "mae": metrics.get("mae", metrics.get("mean_cv_mae", metrics.get("mean_mae", ""))),[m
+[32m+         "rmse": metrics.get("rmse", metrics.get("mean_cv_rmse", metrics.get("mean_rmse", ""))),[m
+[32m+         "mape": metrics.get("mape", metrics.get("mean_cv_mape", metrics.get("mean_mape", ""))),[m
+[32m+         "r2": metrics.get("r2", metrics.get("mean_cv_r2", metrics.get("mean_r2", ""))),[m
+[32m+     }[m
+[32m+ [m
+[32m+ [m
+[32m++>>>>>>> origin/dev[m
+  def load_master() -> pd.DataFrame:[m
+      path = project_path(MASTER_PATH)[m
+      if not path.exists():[m
+[36m@@@ -724,103 -695,10 +756,109 @@@[m [mdef extract_fold_comparison(notebook: d[m
+      return rows[m
+  [m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +def extract_dnn_summary(notebook: dict | None) -> dict:[m
+[32m +    summary = {[m
+[32m +        "status": "Missing",[m
+[32m +        "split_rows": [],[m
+[32m +        "architecture_rows": [[m
+[32m +            {"parameter": "Architecture", "value": "Baseline LSTM"},[m
+[32m +            {"parameter": "Input length", "value": "168 hours"},[m
+[32m +            {"parameter": "Forecast horizon", "value": "24 hours"},[m
+[32m +            {"parameter": "Hidden size", "value": 64},[m
+[32m +            {"parameter": "Dense size", "value": 32},[m
+[32m +            {"parameter": "Dropout", "value": 0.2},[m
+[32m +            {"parameter": "Optimizer", "value": "Adam"},[m
+[32m +            {"parameter": "Learning rate", "value": 0.001},[m
+[32m +            {"parameter": "Early stopping patience", "value": 20},[m
+[32m +        ],[m
+[32m +        "training_rows": [],[m
+[32m +        "test_rows": [],[m
+[32m +    }[m
+[32m +    if not notebook:[m
+[32m +        return summary[m
+[32m +[m
+[32m +    texts = notebook_text_outputs(notebook)[m
+[32m +    joined = "\n".join(texts)[m
+[32m +    summary["status"] = "Ready" if joined.strip() else "Ready - no outputs"[m
+[32m +[m
+[32m +    split_patterns = [[m
+[32m +        ("Train", r"Train:\s*(.*?)\s*(?:→|->)\s*(.*)"),[m
+[32m +        ("Validation", r"Validation:\s*(.*?)\s*(?:→|->)\s*(.*)"),[m
+[32m +        ("Test", r"Test:\s*(.*?)\s*(?:→|->)\s*(.*)"),[m
+[32m +    ][m
+[32m +    for label, pattern in split_patterns:[m
+[32m +        match = re.search(pattern, joined)[m
+[32m +        if match:[m
+[32m +            summary["split_rows"].append([m
+[32m +                {"split": label, "start": match.group(1).strip(), "end": match.group(2).strip()}[m
+[32m +            )[m
+[32m +[m
+[32m +    epoch_pattern = re.compile([m
+[32m +        r"Epoch\s+(\d+)\s+\|\s+Train Loss:\s+([0-9.]+)\s+\|\s+Val Loss:\s+([0-9.]+)"[m
+[32m +    )[m
+[32m +    for match in epoch_pattern.finditer(joined):[m
+[32m +        summary["training_rows"].append([m
+[32m +            {[m
+[32m +                "epoch": int(match.group(1)),[m
+[32m +                "train_loss": round(float(match.group(2)), 6),[m
+[32m +                "val_loss": round(float(match.group(3)), 6),[m
+[32m +            }[m
+[32m +        )[m
+[32m +[m
+[32m +    result_patterns = [[m
+[32m +        ("Baseline LSTM", r"MAE\s*:\s*([0-9.]+)\s*MW\s*RMSE\s*:\s*([0-9.]+)\s*MW\s*R[²2]\s*:\s*([-0-9.]+)"),[m
+[32m +        ("Daily Seasonal Naive", r"Daily Naive MAE\s*:\s*([0-9.]+)\s*MW\s*Daily Naive RMSE\s*:\s*([0-9.]+)\s*MW"),[m
+[32m +        ("Weekly Seasonal Naive", r"Weekly Naive MAE\s*:\s*([0-9.]+)\s*MW\s*Weekly Naive RMSE\s*:\s*([0-9.]+)\s*MW"),[m
+[32m +    ][m
+[32m +    for model, pattern in result_patterns:[m
+[32m +        match = re.search(pattern, joined)[m
+[32m +        if not match:[m
+[32m +            continue[m
+[32m +        row = {[m
+[32m +            "model": model,[m
+[32m +            "evaluation": "Temporal holdout test",[m
+[32m +            "mean_mae": round(float(match.group(1)), 4),[m
+[32m +            "mean_rmse": round(float(match.group(2)), 4),[m
+[32m +            "mean_mape": "-",[m
+[32m +            "mean_r2": round(float(match.group(3)), 4) if len(match.groups()) >= 3 else "-",[m
+[32m +        }[m
+[32m +        summary["test_rows"].append(row)[m
+[32m +[m
+[32m +    table_pattern = re.compile([m
+[32m +        r"^\s*\d+\s+(.+?)\s+([0-9.]+)\s+([0-9.]+)\s*$",[m
+[32m +        re.MULTILINE,[m
+[32m +    )[m
+[32m +    if not summary["test_rows"] and "Daily Seasonal Naive" in joined and "Baseline LSTM" in joined:[m
+[32m +        for match in table_pattern.finditer(joined):[m
+[32m +            model = match.group(1).strip()[m
+[32m +            if model not in {"Daily Seasonal Naive", "Weekly Seasonal Naive", "Baseline LSTM"}:[m
+[32m +                continue[m
+[32m +            summary["test_rows"].append([m
+[32m +                {[m
+[32m +                    "model": model,[m
+[32m +                    "evaluation": "Temporal holdout test",[m
+[32m +                    "mean_mae": round(float(match.group(2)), 4),[m
+[32m +                    "mean_rmse": round(float(match.group(3)), 4),[m
+[32m +                    "mean_mape": "-",[m
+[32m +                    "mean_r2": "-",[m
+[32m +                }[m
+[32m +            )[m
+[32m +[m
+[32m +    return summary[m
+[32m +[m
+[32m +[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  def notebook_comparison_rows(notebooks: dict[str, dict | None]) -> list[dict]:[m
+      prophet_training = notebooks["prophet_training"][m
+      prophet_config = extract_prophet_best_config(notebooks["prophet_tuning"])[m
+      model_comparison = extract_model_comparison(notebooks["xgboost_comparison"])[m
+[32m++<<<<<<< HEAD[m
+[32m +    dnn_summary = extract_dnn_summary(notebooks["dnn_forecasting"])[m
+[32m +    dnn_row = next((row for row in dnn_summary["test_rows"] if row["model"] == "Baseline LSTM"), {})[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+      xgb_row = next((row for row in model_comparison if row["model"] == "XGBoost"), {})[m
+      prophet_row = next((row for row in model_comparison if row["model"] == "Prophet"), {})[m
+      winner = min(model_comparison, key=lambda row: row["mean_rmse"])["model"] if model_comparison else "-"[m
+[36m@@@ -865,18 -743,6 +903,21 @@@[m
+              "mean_cv_mape": xgb_row.get("mean_mape", "-"),[m
+              "mean_cv_r2": xgb_row.get("mean_r2", "-"),[m
+          },[m
+[32m++<<<<<<< HEAD[m
+[32m +        {[m
+[32m +            "notebook": "DNN Forecasting",[m
+[32m +            "model_focus": "DNN / Baseline LSTM",[m
+[32m +            "comparison_role": "Temporal holdout test; not fold-matched CV yet",[m
+[32m +            "status": dnn_summary["status"] if NOTEBOOK_SOURCES["dnn_forecasting"].exists() else "Missing",[m
+[32m +            "usable_visuals": "Training loss history and holdout metrics" if dnn_summary["test_rows"] else "Notebook source detected; no metric outputs parsed",[m
+[32m +            "best_model": dnn_row.get("model", "-"),[m
+[32m +            "mean_cv_mae": dnn_row.get("mean_mae", "-"),[m
+[32m +            "mean_cv_rmse": dnn_row.get("mean_rmse", "-"),[m
+[32m +            "mean_cv_mape": dnn_row.get("mean_mape", "-"),[m
+[32m +            "mean_cv_r2": dnn_row.get("mean_r2", "-"),[m
+[32m +        },[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+      ][m
+  [m
+  [m
+[36m@@@ -900,7 -766,6 +941,10 @@@[m [mdef notebook_visuals() -> dict[m
+      comparison_rows = model_cv_comparison_rows() or extract_model_comparison(notebooks["xgboost_comparison"])[m
+      fold_rows = extract_fold_comparison(notebooks["xgboost_comparison"])[m
+      notebook_rows = notebook_comparison_rows(notebooks)[m
+[32m++<<<<<<< HEAD[m
+[32m +    dnn_summary = extract_dnn_summary(notebooks["dnn_forecasting"])[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  [m
+      winner = min(comparison_rows, key=lambda row: row["mean_rmse"])["model"] if comparison_rows else "-"[m
+      prophet_cv_rmse = prophet_config.get("mean_cv_rmse", "-")[m
+[36m@@@ -925,7 -790,6 +969,10 @@@[m
+          "comparison_points": comparison_rows,[m
+          "fold_rows": fold_rows,[m
+          "fold_points": fold_rows,[m
+[32m++<<<<<<< HEAD[m
+[32m +        "dnn_holdout_rows": dnn_summary["test_rows"],[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+          "message": "CV leaderboard and fold charts are built from saved model artifacts and notebook output files.",[m
+      }[m
+  [m
+[36m@@@ -995,7 -859,7 +1042,11 @@@[m [mdef xgboost_visuals() -> dict[m
+          "features": config.get("features", []),[m
+          "message": ([m
+              "XGBoost visuals use CV artifacts from artifacts/xgboost_model/xgboost_outputs. "[m
+[32m++<<<<<<< HEAD[m
+[32m +            "The XGBoost validation curve uses artifacts/xgboost/validation_predictions.csv."[m
+[32m++=======[m
+[32m+             "A production prediction curve needs xgboost_model.json and validation_predictions.csv."[m
+[32m++>>>>>>> origin/dev[m
+          ),[m
+      }[m
+  [m
+[36m@@@ -1100,83 -964,6 +1151,86 @@@[m [mdef sarimax_visuals() -> dict[m
+      }[m
+  [m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +def dnn_visuals() -> dict:[m
+[32m +    notebook = load_notebook(NOTEBOOK_SOURCES["dnn_forecasting"])[m
+[32m +    summary = extract_dnn_summary(notebook)[m
+[32m +    metrics_path = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")[m
+[32m +    predictions_path = project_path(DNN_OUTPUT_DIR / "dnn_predictions.csv")[m
+[32m +    fold_metrics_path = project_path(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv")[m
+[32m +    model_path = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")[m
+[32m +[m
+[32m +    cv_metrics = load_json_file(DNN_OUTPUT_DIR / "dnn_metrics.json")[m
+[32m +    fold_rows = [][m
+[32m +    if fold_metrics_path.exists():[m
+[32m +        fold_frame = pd.read_csv(fold_metrics_path, low_memory=False)[m
+[32m +        for _, row in fold_frame.iterrows():[m
+[32m +            fold_rows.append([m
+[32m +                {[m
+[32m +                    "model": "DNN/LSTM",[m
+[32m +                    "evaluation": row.get("fold", "CV fold"),[m
+[32m +                    "mean_mae": round(float(row["mae"]), 4),[m
+[32m +                    "mean_rmse": round(float(row["rmse"]), 4),[m
+[32m +                    "mean_mape": round(float(row["mape"]), 4),[m
+[32m +                    "mean_r2": round(float(row["r2"]), 4),[m
+[32m +                }[m
+[32m +            )[m
+[32m +[m
+[32m +    best_row = next((row for row in summary["test_rows"] if row["model"] == "Baseline LSTM"), {})[m
+[32m +    has_cv_export = bool(cv_metrics and predictions_path.exists())[m
+[32m +    kpis = [[m
+[32m +        {"label": "DNN Status", "value": "Fold-matched CV ready" if has_cv_export else summary["status"]},[m
+[32m +        {"label": "Evaluation Basis", "value": cv_metrics.get("evaluation", "Temporal holdout") if cv_metrics else "Temporal holdout"},[m
+[32m +        {"label": "Mean CV RMSE", "value": round_value(cv_metrics.get("rmse")) if cv_metrics else best_row.get("mean_rmse", "-")},[m
+[32m +        {"label": "Mean CV MAE", "value": round_value(cv_metrics.get("mae")) if cv_metrics else best_row.get("mean_mae", "-")},[m
+[32m +        {"label": "Mean CV R2", "value": round_value(cv_metrics.get("r2")) if cv_metrics else best_row.get("mean_r2", "-")},[m
+[32m +        {"label": "Production Export", "value": "Ready" if model_path.exists() else "Not exported"},[m
+[32m +    ][m
+[32m +[m
+[32m +    return {[m
+[32m +        "kpis": kpis,[m
+[32m +        "split_rows": summary["split_rows"],[m
+[32m +        "training_rows": summary["training_rows"],[m
+[32m +        "training_points": summary["training_rows"],[m
+[32m +        "test_rows": fold_rows or summary["test_rows"],[m
+[32m +        "test_points": fold_rows or summary["test_rows"],[m
+[32m +        "architecture_rows": summary["architecture_rows"],[m
+[32m +        "artifact_rows": [[m
+[32m +            {[m
+[32m +                "artifact": "Notebook",[m
+[32m +                "path": str(NOTEBOOK_SOURCES["dnn_forecasting"]),[m
+[32m +                "status": "Ready" if NOTEBOOK_SOURCES["dnn_forecasting"].exists() else "Missing",[m
+[32m +            },[m
+[32m +            {[m
+[32m +                "artifact": "CV metrics JSON",[m
+[32m +                "path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),[m
+[32m +                "status": "Ready" if metrics_path.exists() else "Missing",[m
+[32m +            },[m
+[32m +            {[m
+[32m +                "artifact": "CV predictions CSV",[m
+[32m +                "path": str(DNN_OUTPUT_DIR / "dnn_predictions.csv"),[m
+[32m +                "status": "Ready" if predictions_path.exists() else "Missing",[m
+[32m +            },[m
+[32m +            {[m
+[32m +                "artifact": "CV fold metrics CSV",[m
+[32m +                "path": str(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv"),[m
+[32m +                "status": "Ready" if fold_metrics_path.exists() else "Missing",[m
+[32m +            },[m
+[32m +            {[m
+[32m +                "artifact": "PyTorch model",[m
+[32m +                "path": str(DNN_OUTPUT_DIR / "dnn_model.pt"),[m
+[32m +                "status": "Ready" if model_path.exists() else "Missing",[m
+[32m +            },[m
+[32m +        ],[m
+[32m +        "message": ([m
+[32m +            "DNN visuals use fold-matched CV artifacts from artifacts/dnn/dnn_outputs when exported. "[m
+[32m +            "If those files are missing, the page falls back to the DNN_Forecasting.ipynb holdout evidence."[m
+[32m +        ),[m
+[32m +    }[m
+[32m +[m
+[32m +[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+  def model_cv_comparison_rows() -> list[dict]:[m
+      rows = [][m
+      comparison_path = project_path(XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv")[m
+[36m@@@ -1211,23 -998,6 +1265,26 @@@[m
+              }[m
+          )[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +    dnn_metrics = load_json_file(DNN_OUTPUT_DIR / "dnn_metrics.json")[m
+[32m +    dnn_folds = project_path(DNN_OUTPUT_DIR / "dnn_validation_metrics.csv")[m
+[32m +    if dnn_metrics and dnn_folds.exists():[m
+[32m +        fold_frame = pd.read_csv(dnn_folds, low_memory=False)[m
+[32m +        rows.append([m
+[32m +            {[m
+[32m +                "model": "DNN/LSTM",[m
+[32m +                "mean_mae": round(float(dnn_metrics["mae"]), 4),[m
+[32m +                "mean_rmse": round(float(dnn_metrics["rmse"]), 4),[m
+[32m +                "mean_mape": round(float(dnn_metrics["mape"]), 4),[m
+[32m +                "mean_r2": round(float(dnn_metrics["r2"]), 4),[m
+[32m +                "std_rmse": round(float(fold_frame["rmse"].std(ddof=0)), 4),[m
+[32m +                "worst_fold_rmse": round(float(fold_frame["rmse"].max()), 4),[m
+[32m +                "min_fold_r2": round(float(fold_frame["r2"].min()), 4),[m
+[32m +            }[m
+[32m +        )[m
+[32m +[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+      return sorted(rows, key=lambda row: row["mean_rmse"])[m
+  [m
+  [m
+[36m@@@ -1235,10 -1005,8 +1292,15 @@@[m [mdef ml_model_registry() -> dict[m
+      prophet_baseline_model = project_path(Path("artifacts") / "prophet_baseline" / "prophet_model.json")[m
+      prophet_tuned_config = project_path(PROPHET_TUNED_DIR / "best_prophet_config.json")[m
+      xgb_config = project_path(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")[m
+[32m++<<<<<<< HEAD[m
+[32m +    xgb_model = project_path(XGBOOST_DIR / "xgboost_model.json")[m
+[32m +    sarimax_summary = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")[m
+[32m +    dnn_model = project_path(DNN_OUTPUT_DIR / "dnn_model.pt")[m
+[32m +    dnn_metrics = project_path(DNN_OUTPUT_DIR / "dnn_metrics.json")[m
+[32m++=======[m
+[32m+     xgb_model = project_path(Path("artifacts") / "xgboost" / "xgboost_model.json")[m
+[32m+     sarimax_summary = project_path(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json")[m
+[32m++>>>>>>> origin/dev[m
+  [m
+      return {[m
+          "models": [[m
+[36m@@@ -1261,7 -1029,7 +1323,11 @@@[m
+                  "label": "XGBoost CV Winner",[m
+                  "status": "servable" if xgb_model.exists() else ("config_ready" if xgb_config.exists() else "missing_config"),[m
+                  "config_path": str(XGBOOST_OUTPUT_DIR / "best_xgb_config.json"),[m
+[32m++<<<<<<< HEAD[m
+[32m +                "model_path": str(XGBOOST_DIR / "xgboost_model.json"),[m
+[32m++=======[m
+[32m+                 "model_path": str(Path("artifacts") / "xgboost" / "xgboost_model.json"),[m
+[32m++>>>>>>> origin/dev[m
+              },[m
+              {[m
+                  "id": "sarimax",[m
+[36m@@@ -1270,14 -1038,6 +1336,17 @@@[m
+                  "summary_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json"),[m
+                  "predictions_path": str(SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),[m
+              },[m
+[32m++<<<<<<< HEAD[m
+[32m +            {[m
+[32m +                "id": "dnn",[m
+[32m +                "label": "DNN/LSTM CV Candidate",[m
+[32m +                "status": "servable" if dnn_model.exists() else ("metrics_ready" if dnn_metrics.exists() else "not_exported"),[m
+[32m +                "metrics_path": str(DNN_OUTPUT_DIR / "dnn_metrics.json"),[m
+[32m +                "model_path": str(DNN_OUTPUT_DIR / "dnn_model.pt"),[m
+[32m +                "predictions_path": str(DNN_OUTPUT_DIR / "dnn_predictions.csv"),[m
+[32m +            },[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+          ][m
+      }[m
+  [m
+[36m@@@ -1305,16 -1065,10 +1374,23 @@@[m [mdef model_validation(model_key: str) -[m
+      metrics_path = project_path(model["metrics"])[m
+      predictions_path = project_path(model["predictions"])[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +    metrics = load_metrics_file(model["metrics"])[m
+[32m +    if not metrics and model_key == "dnn":[m
+[32m +        dnn_row = next((row for row in dnn_visuals()["test_rows"] if row["model"] == "Baseline LSTM"), {})[m
+[32m +        if dnn_row:[m
+[32m +            metrics = {[m
+[32m +                "mae": dnn_row.get("mean_mae"),[m
+[32m +                "rmse": dnn_row.get("mean_rmse"),[m
+[32m +                "mape": dnn_row.get("mean_mape"),[m
+[32m +                "r2": dnn_row.get("mean_r2"),[m
+[32m +            }[m
+[32m++=======[m
+[32m+     metrics = {}[m
+[32m+     if metrics_path.exists():[m
+[32m+         with metrics_path.open(encoding="utf-8") as file:[m
+[32m+             metrics = json.load(file)[m
+[32m++>>>>>>> origin/dev[m
+      normalized_metrics = normalize_metric_payload(metrics)[m
+  [m
+      if not predictions_path.exists():[m
+[36m@@@ -1422,8 -1176,6 +1498,11 @@@[m [mdef api_payload(path: str, query: dict[[m
+          return xgboost_visuals()[m
+      if path == "/api/sarimax-visuals":[m
+          return sarimax_visuals()[m
+[32m++<<<<<<< HEAD[m
+[32m +    if path == "/api/dnn-visuals":[m
+[32m +        return dnn_visuals()[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+      if path == "/api/v1/forecast/ml/models":[m
+          return ml_model_registry()[m
+      if path == "/api/v1/forecast/ml/comparison":[m
+[36m@@@ -1432,7 -1184,6 +1511,10 @@@[m
+              "prophet_tuned": prophet_tuned_visuals(),[m
+              "xgboost": xgboost_visuals(),[m
+              "sarimax": sarimax_visuals(),[m
+[32m++<<<<<<< HEAD[m
+[32m +            "dnn": dnn_visuals(),[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+          }[m
+      if path == "/api/v1/forecast/ml":[m
+          return ml_forecast_payload(query)[m
+[1mdiff --cc ui/static/index.html[m
+[1mindex 955a6a0,2c6959b..0000000[m
+[1m--- a/ui/static/index.html[m
+[1m+++ b/ui/static/index.html[m
+[36m@@@ -75,10 -75,8 +75,15 @@@[m
+          <p class="section-note">This chart uses local prediction artifact files. Use Model Comparison for CV leaderboard and tuning results.</p>[m
+          <div class="toolbar">[m
+            <button data-model="prophet_v1" class="model-active">Prophet v1 Baseline</button>[m
+[32m++<<<<<<< HEAD[m
+[32m +          <button data-model="prophet_tuned">Prophet Tuned</button>[m
+            <button data-model="xgboost">XGBoost</button>[m
+            <button data-model="sarimax">SARIMAX</button>[m
+[32m +          <button data-model="dnn">DNN/LSTM</button>[m
+[32m++=======[m
+[32m++          <button data-model="xgboost">XGBoost</button>[m
+[32m++          <button data-model="sarimax">SARIMAX</button>[m
+[32m++>>>>>>> origin/dev[m
+          </div>[m
+          <div id="modelMetrics" class="grid"></div>[m
+          <p id="modelMessage"></p>[m
+[36m@@@ -87,7 -85,7 +92,11 @@@[m
+  [m
+        <section id="modelComparisonLink">[m
+          <h3>Model Comparison</h3>[m
+[32m++<<<<<<< HEAD[m
+[32m +        <p class="section-note">Open the dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, DNN/LSTM, CV leaderboards, and tuning details.</p>[m
+[32m++=======[m
+[32m+         <p class="section-note">Open the dedicated comparison page for Prophet tuned, XGBoost, SARIMAX, CV leaderboards, and tuning details.</p>[m
+[32m++>>>>>>> origin/dev[m
+          <a class="primary-link" href="/model-comparison">Open Model Comparison</a>[m
+        </section>[m
+  [m
+[1mdiff --cc ui/static/model_comparison.html[m
+[1mindex 5d4ec14,62a6ea3..0000000[m
+[1m--- a/ui/static/model_comparison.html[m
+[1m+++ b/ui/static/model_comparison.html[m
+[36m@@@ -16,14 -16,13 +16,21 @@@[m
+          <a href="#prophetTuned">Prophet Tuned</a>[m
+          <a href="#xgboostResults">XGBoost</a>[m
+          <a href="#sarimaxResults">SARIMAX</a>[m
+[32m++<<<<<<< HEAD[m
+[32m +        <a href="#dnnResults">DNN/LSTM</a>[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+          <a href="#notebookEvidence">Notebook Evidence</a>[m
+        </nav>[m
+      </aside>[m
+      <main>[m
+        <header>[m
+          <h2>Model Comparison</h2>[m
+[32m++<<<<<<< HEAD[m
+[32m +        <p>Prophet tuned, XGBoost, SARIMAX, and DNN/LSTM comparison from saved artifacts and notebook outputs. Version: 2026-08-20-ui-v15.</p>[m
+[32m++=======[m
+[32m+         <p>Prophet tuned, XGBoost, and SARIMAX comparison from saved CV artifacts. Version: 2026-08-20-ui-v15.</p>[m
+[32m++>>>>>>> origin/dev[m
+        </header>[m
+  [m
+        <section id="leaderboard">[m
+[36m@@@ -83,24 -82,6 +90,27 @@@[m
+          <div class="table-wrap"><table id="sarimaxFeatureTable"></table></div>[m
+        </section>[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +      <section id="dnnResults">[m
+[32m +        <h3>DNN/LSTM</h3>[m
+[32m +        <p id="dnnMessage"></p>[m
+[32m +        <div id="dnnKpis" class="grid"></div>[m
+[32m +        <div class="chart-grid">[m
+[32m +          <div class="chart-card"><h4>DNN Training History</h4><div id="dnnLossChart"></div></div>[m
+[32m +          <div class="chart-card"><h4>DNN Holdout RMSE / MAE</h4><div id="dnnHoldoutChart"></div></div>[m
+[32m +        </div>[m
+[32m +        <h4>DNN Holdout Results</h4>[m
+[32m +        <div class="table-wrap"><table id="dnnTestTable"></table></div>[m
+[32m +        <h4>DNN Split Ranges</h4>[m
+[32m +        <div class="table-wrap"><table id="dnnSplitTable"></table></div>[m
+[32m +        <h4>DNN Configuration</h4>[m
+[32m +        <div class="table-wrap"><table id="dnnConfigTable"></table></div>[m
+[32m +        <h4>DNN Artifacts</h4>[m
+[32m +        <div class="table-wrap"><table id="dnnArtifactTable"></table></div>[m
+[32m +      </section>[m
+[32m +[m
+[32m++=======[m
+[32m++>>>>>>> origin/dev[m
+        <section id="notebookEvidence">[m
+          <h3>Notebook Evidence</h3>[m
+          <h4>Notebook Comparison</h4>[m
+[1mdiff --cc ui/static/model_comparison.js[m
+[1mindex f43b958,6db13c3..0000000[m
+[1m--- a/ui/static/model_comparison.js[m
+[1m+++ b/ui/static/model_comparison.js[m
+[36m@@@ -41,7 -41,7 +41,11 @@@[m [mfunction renderTable(id, rows, columns[m
+      <tbody>${data.map((row) => `<tr>${columns.map((c) => {[m
+        const value = row[c.key] ?? "-";[m
+        if (c.key === "status") {[m
+[32m++<<<<<<< HEAD[m
+[32m +        const cls = value === "Ready" || value === "servable" || value === "config_ready" || value === "metrics_ready" ? "ready" : "missing";[m
+[32m++=======[m
+[32m+         const cls = value === "Ready" || value === "servable" || value === "config_ready" ? "ready" : "missing";[m
+[32m++>>>>>>> origin/dev[m
+          return `<td><span class="pill ${cls}">${escapeHtml(value)}</span></td>`;[m
+        }[m
+        return `<td>${escapeHtml(value)}</td>`;[m
+[36m@@@ -325,44 -325,8 +329,49 @@@[m [masync function loadSarimax() [m
+    ]);[m
+  }[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m +async function loadDnn() {[m
+[32m +  const data = await fetchJson("/api/dnn-visuals");[m
+[32m +  document.getElementById("dnnMessage").textContent = data.message || "";[m
+[32m +  cardGrid("dnnKpis", data.kpis || []);[m
+[32m +  lineChart("dnnLossChart", data.training_points || [], [[m
+[32m +    {key: "train_loss", label: "Train Loss", color: "#0b5cab"},[m
+[32m +    {key: "val_loss", label: "Validation Loss", color: "#c2410c"}[m
+[32m +  ], "epoch", {xLabel: "Epoch", yLabel: "MSE loss"});[m
+[32m +  lineChart("dnnHoldoutChart", data.test_points || [], [[m
+[32m +    {key: "mean_rmse", label: "RMSE", color: "#0f766e"},[m
+[32m +    {key: "mean_mae", label: "MAE", color: "#7c3aed"}[m
+[32m +  ], "model", {xLabel: "Model", yLabel: "MW"});[m
+[32m +  renderTable("dnnTestTable", data.test_rows || [], [[m
+[32m +    {key: "model", label: "Model"},[m
+[32m +    {key: "evaluation", label: "Evaluation"},[m
+[32m +    {key: "mean_rmse", label: "RMSE"},[m
+[32m +    {key: "mean_mae", label: "MAE"},[m
+[32m +    {key: "mean_r2", label: "R2"},[m
+[32m +    {key: "mean_mape", label: "MAPE"}[m
+[32m +  ]);[m
+[32m +  renderTable("dnnSplitTable", data.split_rows || [], [[m
+[32m +    {key: "split", label: "Split"},[m
+[32m +    {key: "start", label: "Start"},[m
+[32m +    {key: "end", label: "End"}[m
+[32m +  ]);[m
+[32m +  renderTable("dnnConfigTable", data.architecture_rows || [], [[m
+[32m +    {key: "parameter", label: "Parameter"},[m
+[32m +    {key: "value", label: "Value"}[m
+[32m +  ]);[m
+[32m +  renderTable("dnnArtifactTable", data.artifact_rows || [], [[m
+[32m +    {key: "artifact", label: "Artifact"},[m
+[32m +    {key: "path", label: "Path"},[m
+[32m +    {key: "status", label: "Status"}[m
+[32m +  ]);[m
+[32m +}[m
+[32m +[m
+[32m +async function refreshComparisonPage() {[m
+[32m +  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn()]);[m
+[32m++=======[m
+[32m+ async function refreshComparisonPage() {[m
+[32m+   await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax()]);[m
+[32m++>>>>>>> origin/dev[m
+  }[m
+  [m
+  refreshComparisonPage().catch((error) => {[m
