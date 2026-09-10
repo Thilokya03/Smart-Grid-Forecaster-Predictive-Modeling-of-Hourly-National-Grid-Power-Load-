@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T15:02:02+00:00",
+  "generated_at": "2026-09-10T19:43:45+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -11,15 +11,15 @@
   "train_start": "2010-01-01 00:00:00",
   "train_end": "2026-06-30 23:00:00",
   "latest_actual_demand": "2026-09-10 07:00:00",
-  "demand_data_lag_hours": 9,
+  "demand_data_lag_hours": 13,
   "nowcast_gap_start": "2026-09-10 08:00:00",
-  "nowcast_gap_end": "2026-09-10 16:00:00",
+  "nowcast_gap_end": "2026-09-10 20:00:00",
   "backfill_start": "2026-07-01 00:00:00",
-  "backfill_end": "2026-09-10 16:00:00",
-  "backfill_rows": 1721,
+  "backfill_end": "2026-09-10 20:00:00",
+  "backfill_rows": 1725,
   "backfill_skipped_rows": 0,
-  "forecast_start": "2026-09-10 17:00:00",
-  "forecast_end": "2026-09-17 16:00:00",
+  "forecast_start": "2026-09-10 21:00:00",
+  "forecast_end": "2026-09-17 20:00:00",
   "forecast_rows": 168,
   "forecast_skipped_rows": 0,
   "detailed_24h": {
@@ -37,7 +37,7 @@
     "scoring_end": "2026-09-10 07:00:00",
     "scoring_rows": 1712
   },
-  "elapsed_seconds": 42.049,
+  "elapsed_seconds": 32.062,
   "outputs": {
     "backfill": "artifacts/fast_predictions/gap_fill_predictions.csv",
     "legacy_backfill": "artifacts/fast_predictions/july_to_sept10_predictions.csv",
