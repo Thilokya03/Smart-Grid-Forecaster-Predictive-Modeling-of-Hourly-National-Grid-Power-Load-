@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: uk-weather-forecast-dashboard
+    runtime: docker
+    plan: 1c-2g
+    branch: dev
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    disk:
+      name: forecast-runtime-storage
+      mountPath: /app/storage
+      sizeGB: 10
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: STORAGE_DIR
+        value: /app/storage
+      - key: DEMAND_INPUT_FOLDER
+        value: /input/demand
+      - key: AUTO_PREDICTIONS_ENABLED
+        value: true
+      - key: AUTO_PREDICTION_INTERVAL_HOURS
+        value: 6
+      - key: AUTO_PREDICTION_RUN_ON_START
+        value: true
+      - key: DASHBOARD_ADMIN_TOKEN
+        sync: false
+      - key: DASHBOARD_SUPER_ADMIN_TOKEN
+        sync: false
