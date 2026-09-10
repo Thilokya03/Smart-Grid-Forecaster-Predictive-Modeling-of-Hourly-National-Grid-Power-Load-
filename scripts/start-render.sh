@@ -4,7 +4,7 @@ set -eu
 APP_DIR="${APP_DIR:-$(pwd)}"
 STORAGE_DIR="${STORAGE_DIR:-$APP_DIR/storage}"
 
-if [ "${RENDER:-}" = "true" ]; then
+if [ "${USE_PERSISTENT_STORAGE:-false}" = "true" ]; then
   mkdir -p "$STORAGE_DIR/data" "$STORAGE_DIR/artifacts" /input/demand
 
   for name in data artifacts; do
