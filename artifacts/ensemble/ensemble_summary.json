@@ -1,0 +1,23 @@
+{
+  "method": "Top 3 selected by pre-June CV RMSE; weighted by inverse CV RMSE.",
+  "final_holdout_start": "2026-06-01 00:00:00",
+  "final_holdout_end": "2026-06-30 23:00:00",
+  "selected_models": [
+    "XGBoost",
+    "DNN_LSTM"
+  ],
+  "cv_weights": {
+    "XGBoost": 0.6027711582828502,
+    "DNN_LSTM": 0.39722884171714984
+  },
+  "ensemble_weights_used": {
+    "XGBoost": 0.6027711582828502,
+    "DNN_LSTM": 0.39722884171714984
+  },
+  "dnn_june_max_epochs": 15,
+  "dnn_future_max_epochs": 5,
+  "sarimax_maxiter": 50,
+  "unavailable_or_failed_models": {
+    "Prophet": "KeyError(\"['demand_mw'] not in index\")"
+  }
+}

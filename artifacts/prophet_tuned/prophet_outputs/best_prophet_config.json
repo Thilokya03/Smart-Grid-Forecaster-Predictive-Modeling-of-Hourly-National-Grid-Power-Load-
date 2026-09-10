@@ -1,0 +1,32 @@
+{
+  "model_type": "Prophet",
+  "variant": "weather + lags + is_holiday",
+  "regressors": [
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "precipitation",
+    "surface_pressure",
+    "cloud_cover",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "shortwave_radiation",
+    "demand_lag_24",
+    "demand_lag_168",
+    "is_holiday"
+  ],
+  "use_prophet_holidays": false,
+  "params": {
+    "daily_fourier_order": 16,
+    "weekly_fourier_order": 10,
+    "yearly_fourier_order": 12,
+    "changepoint_prior_scale": 0.05,
+    "seasonality_prior_scale": 5.0,
+    "seasonality_mode": "multiplicative"
+  },
+  "selection_metric": "mean_cv_rmse",
+  "mean_cv_rmse": 1508.894475,
+  "mean_cv_mae": 1138.72995,
+  "mean_cv_mape": 4.479675,
+  "mean_cv_r2": 0.86775,
+  "final_test_start": "2026-06-01 00:00:00"
+}

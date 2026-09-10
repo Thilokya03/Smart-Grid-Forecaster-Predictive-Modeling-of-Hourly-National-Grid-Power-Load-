@@ -169,7 +169,7 @@ Super-admin page:
 https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
 
-Free Render web services do not support persistent disks, so the service should not be the long-term source of truth for generated CSVs. This deployment bundles the latest committed data/artifact snapshot so the dashboard has content after each deploy. Use GitHub Actions or another external store to refresh those files automatically and redeploy Render.
+Free Render web services do not support persistent disks, so this deployment stores generated `data/` and `artifacts/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
 
 ## NESO Lag Handling
 

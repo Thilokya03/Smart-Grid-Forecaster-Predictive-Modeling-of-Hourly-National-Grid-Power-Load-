@@ -1,0 +1,61 @@
+name: Update forecast data
+
+on:
+  schedule:
+    - cron: "17 0,6,12,18 * * *"
+      timezone: "Europe/London"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-forecast-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      DEMAND_INPUT_FOLDER: data/raw/neso
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-render.txt
+
+      - name: Refresh demand, weather, features, and forecasts
+        run: |
+          python uk_training_data_prep/download_latest_neso_demand.py || echo "::warning::NESO download failed; continuing with cached demand files."
+          python weather_pipeline/api_weather.py || echo "::warning::Weather API refresh failed; continuing with cached weather files."
+          python uk_training_data_prep/refresh_local_uk_features.py
+          python uk_training_data_prep/build_weather_feature_data.py
+          python uk_training_data_prep/build_hourly_load_data.py
+          python uk_training_data_prep/build_master_training_data.py
+          python uk_training_data_prep/build_forecast_feature_data.py
+          python ml_training/fast_gap_fill_and_forecast.py
+
+      - name: Commit changed data and artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data artifacts
+          if git diff --cached --quiet; then
+            echo "No data or artifact changes to commit."
+          else
+            git commit -m "Update forecast data [skip ci]"
+            git push
+          fi

@@ -21,24 +21,13 @@ env/
 .env
 .env.*
 
-# Generated datasets and runtime data
-data/**/*.csv
-data/**/*.db
-data/**/*.sqlite
-data/**/*.sqlite3
-data/**/*.json
+# Generated datasets and runtime data are tracked in the private deploy repo
+# so Render Free can serve a complete dashboard snapshot.
 data/**/*.download
-data/**/*.txt
 
-# Root-level generated data, kept for backward compatibility if recreated
-*.csv
-*.db
-*.sqlite
-*.sqlite3
-
-# Model artifacts and reports
-artifacts/
+# Model training run folders that are not needed for deployment
 mlruns/
+artifacts/prophet_baseline/prophet_model.json
 *.pkl
 *.pickle
 *.joblib
@@ -54,10 +43,6 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
-
-# Tracked processed dataset for model training/submission
-!data/processed/master_training_data.csv
-
 
 # results
 results/

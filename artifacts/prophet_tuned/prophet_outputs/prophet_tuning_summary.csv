@@ -1,0 +1,17 @@
+config_id,variant,changepoint_prior_scale,seasonality_prior_scale,seasonality_mode,mean_mae,mean_rmse,mean_mape,mean_r2,std_rmse,folds_completed
+weather + lags + is_holiday_cp0.05_sp5.0_multiplicative,weather + lags + is_holiday,0.05,5.0,multiplicative,1138.72995,1508.894475,4.479675,0.86775,156.1496809955409,4
+weather + lags + is_holiday_cp0.1_sp10.0_multiplicative,weather + lags + is_holiday,0.1,10.0,multiplicative,1139.2459,1509.606925,4.481725,0.86765,157.05106129936158,4
+weather + lags + is_holiday_cp0.05_sp10.0_multiplicative,weather + lags + is_holiday,0.05,10.0,multiplicative,1139.4373,1509.8777,4.4824,0.8676,157.39223965871602,4
+weather + lags + is_holiday_cp0.1_sp5.0_multiplicative,weather + lags + is_holiday,0.1,5.0,multiplicative,1140.367425,1510.7734500000001,4.4865,0.867425,157.15706155150437,4
+weather + lags + is_holiday_cp0.1_sp10.0_additive,weather + lags + is_holiday,0.1,10.0,additive,1153.7871499999999,1528.2163500000001,4.5347,0.86495,174.47592822018933,4
+weather + lags + is_holiday_cp0.1_sp5.0_additive,weather + lags + is_holiday,0.1,5.0,additive,1153.9747499999999,1529.14875,4.534075,0.8648,174.5626965920936,4
+weather + lags + is_holiday_cp0.05_sp10.0_additive,weather + lags + is_holiday,0.05,10.0,additive,1153.97765,1529.197875,4.533925,0.8647750000000001,174.24384845463698,4
+weather + lags + is_holiday_cp0.05_sp5.0_additive,weather + lags + is_holiday,0.05,5.0,additive,1154.1259,1529.3817,4.534425000000001,0.86475,174.71690245340696,4
+weather + lags + prophet_uk_holidays_cp0.05_sp5.0_multiplicative,weather + lags + prophet_uk_holidays,0.05,5.0,multiplicative,1135.112725,1532.25265,4.469275,0.860425,131.64377670720577,4
+weather + lags + prophet_uk_holidays_cp0.1_sp10.0_multiplicative,weather + lags + prophet_uk_holidays,0.1,10.0,multiplicative,1135.043925,1532.264775,4.46995,0.8603500000000001,132.27012695486394,4
+weather + lags + prophet_uk_holidays_cp0.05_sp10.0_multiplicative,weather + lags + prophet_uk_holidays,0.05,10.0,multiplicative,1134.991475,1532.400825,4.4689250000000005,0.860425,133.35660966332279,4
+weather + lags + prophet_uk_holidays_cp0.1_sp5.0_multiplicative,weather + lags + prophet_uk_holidays,0.1,5.0,multiplicative,1136.295275,1533.99595,4.474525,0.86015,134.3671946375925,4
+weather + lags + prophet_uk_holidays_cp0.05_sp5.0_additive,weather + lags + prophet_uk_holidays,0.05,5.0,additive,1149.2238,1550.471475,4.520525,0.857625,150.27779648462987,4
+weather + lags + prophet_uk_holidays_cp0.1_sp10.0_additive,weather + lags + prophet_uk_holidays,0.1,10.0,additive,1149.4007,1550.7001,4.52145,0.857575,150.21599919753336,4
+weather + lags + prophet_uk_holidays_cp0.05_sp10.0_additive,weather + lags + prophet_uk_holidays,0.05,10.0,additive,1149.41735,1550.986425,4.520375,0.8576250000000001,151.039040697593,4
+weather + lags + prophet_uk_holidays_cp0.1_sp5.0_additive,weather + lags + prophet_uk_holidays,0.1,5.0,additive,1150.220875,1551.287125,4.5257499999999995,0.857525,150.56363276963378,4
