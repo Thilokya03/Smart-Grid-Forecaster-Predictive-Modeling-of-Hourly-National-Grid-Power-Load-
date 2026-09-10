@@ -22,7 +22,7 @@ PORT = int(os.environ.get("PORT", "8765"))
 AUTO_PREDICTIONS_ENABLED = os.environ.get("AUTO_PREDICTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_PREDICTION_INTERVAL_HOURS = int(os.environ.get("AUTO_PREDICTION_INTERVAL_HOURS", "6"))
 AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", "").strip().lower() in {"1", "true", "yes", "on"}
-DASHBOARD_VERSION = "2026-08-20-ui-v15"
+DASHBOARD_VERSION = "2026-08-20-ui-v17"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 

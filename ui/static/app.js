@@ -496,17 +496,24 @@ async function loadLastOutput() {
   document.getElementById("lastOutput").textContent = data.output || "No command has been run from this UI yet.";
 }
 
+function clearLoadingErrors() {
+  const box = document.getElementById("loadErrors");
+  if (box) box.remove();
+}
+
 async function refreshAll() {
+  clearLoadingErrors();
+  await loadSection("Summary", loadSummary);
+  await loadSection("KPIs", loadKpis);
+  await loadSection("Charts", loadCharts);
   await Promise.all([
-    loadSection("Summary", loadSummary),
-    loadSection("KPIs", loadKpis),
-    loadSection("Charts", loadCharts),
     loadSection("Events", loadEvents),
+    loadSection("Weather forecast", loadForecast),
     loadSection("Prediction inputs", loadForecastInputs),
-    loadSection("Model validation", loadModelValidation),
-    loadSection("Notebook evidence", loadNotebookVisuals),
     loadSection("Last output", loadLastOutput),
   ]);
+  await loadSection("Model validation", loadModelValidation);
+  await loadSection("Notebook evidence", loadNotebookVisuals);
 }
 
 document.querySelectorAll("[data-period]").forEach((button) => {
