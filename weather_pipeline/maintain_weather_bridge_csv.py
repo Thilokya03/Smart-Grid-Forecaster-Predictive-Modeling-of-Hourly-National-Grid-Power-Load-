@@ -152,7 +152,7 @@ def report_missing_gap(bridge_data):
     if bridge_data.empty:
         expected_start = next_hour(BASE_DATA_END_TIME)
         print(f"Bridge CSV is empty. Missing bridge starts at {expected_start}.")
-        return
+        return {"missing_hours": None, "first_missing": str(expected_start), "empty": True}
 
     bridge_data = bridge_data.copy()
     bridge_data["timestamp"] = pd.to_datetime(bridge_data["timestamp"])
@@ -168,12 +168,13 @@ def report_missing_gap(bridge_data):
 
     if len(missing_hours) == 0:
         print("No missing full-coverage hours inside the current bridge range.")
-        return
+        return {"missing_hours": 0}
 
     print(f"Missing or incomplete bridge hours: {len(missing_hours)}")
     print(f"First missing hour: {missing_hours[0]}")
     print(f"Last missing hour: {missing_hours[-1]}")
     print("Use bridge_weather_from_july.py to API-backfill those older missing hours.")
+    return {"missing_hours": len(missing_hours), "first_missing": str(missing_hours[0]), "last_missing": str(missing_hours[-1])}
 
 
 def print_summary(old_last_time, new_rows, bridge_data):
@@ -197,7 +198,7 @@ def main():
     update_last_update_file(bridge_data)
 
     print_summary(old_last_time, new_rows, bridge_data)
-    report_missing_gap(bridge_data)
+    return report_missing_gap(bridge_data)
 
 
 if __name__ == "__main__":

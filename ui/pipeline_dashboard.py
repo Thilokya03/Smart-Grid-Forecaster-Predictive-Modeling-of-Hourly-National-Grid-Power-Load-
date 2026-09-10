@@ -12,8 +12,10 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 import pandas as pd
+from ui.pipeline_health import pipeline_health, read_report, write_report, utc_now
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +24,7 @@ PORT = int(os.environ.get("PORT", "8765"))
 AUTO_PREDICTIONS_ENABLED = os.environ.get("AUTO_PREDICTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_PREDICTION_INTERVAL_HOURS = int(os.environ.get("AUTO_PREDICTION_INTERVAL_HOURS", "6"))
 AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", "").strip().lower() in {"1", "true", "yes", "on"}
-DASHBOARD_VERSION = "2026-08-20-ui-v17"
+DASHBOARD_VERSION = "2026-09-10-ui-v18"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -247,6 +249,7 @@ ADMIN_API_PATHS = {
     "/api/v1/forecast/ml/comparison",
 }
 SUPER_ADMIN_API_PATHS = {
+    "/api/pipeline-health",
     "/api/summary",
     "/api/kpis",
     "/api/timeseries",
@@ -1567,27 +1570,71 @@ def run_task_unlocked(task_key: str) -> str:
     if task is None:
         return f"Unknown task: {task_key}"
 
-    _, relative_scripts = task
+    label, relative_scripts = task
+    started = utc_now()
+    report = {"id": uuid.uuid4().hex, "task": task_key, "label": label, "started_at": started, "finished_at": None, "status": "running", "steps": [], "message": "Pipeline is running.", "origin": "github_actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "dashboard"}
+    if os.environ.get("GITHUB_RUN_ID") and os.environ.get("GITHUB_REPOSITORY"):
+        report["run_url"] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    write_report("run", report)
     lines = []
     for relative_script, optional in relative_scripts:
         script_path = project_path(relative_script)
-        if not script_path.exists():
-            lines.append(f"Script not found: {relative_script}")
+        step = {"script": str(relative_script), "status": "running", "started_at": utc_now(), "optional": optional}
+        report["steps"].append(step)
+        write_report("run", report)
+        try:
+            if not script_path.exists():
+                raise FileNotFoundError(f"Script not found: {relative_script}")
+            completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=int(os.environ.get("PIPELINE_STEP_TIMEOUT_SECONDS", "900")))
+            lines.append(f"$ {sys.executable} {relative_script}")
+            if completed.stdout.strip():
+                lines.append(completed.stdout.strip())
+            if completed.stderr.strip():
+                lines.append(completed.stderr.strip())
+            lines.append(f"Exit code: {completed.returncode}")
+            step.update(status="ok" if completed.returncode == 0 else "failed", exit_code=completed.returncode)
+            source_name = {"download_latest_neso_demand.py": "neso", "api_weather.py": "weather"}.get(relative_script.name)
+            source = read_report(source_name) if source_name else {}
+            if source.get("checked_at", "") >= started and source.get("status") in {"cached", "degraded", "failed"}:
+                step["message"] = source.get("message", "")
+                if step["status"] == "ok":
+                    step["status"] = "degraded"
+        except Exception as exc:
+            step.update(status="failed", message=f"{type(exc).__name__}: {exc}")
+            lines.append(step["message"])
+        step["finished_at"] = utc_now()
+        write_report("run", report)
+        if step["status"] == "failed" and not optional:
+            report["status"] = "failed"
             break
-
-        completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True)
-        lines.append(f"$ {sys.executable} {relative_script}")
-        if completed.stdout.strip():
-            lines.append(completed.stdout.strip())
-        if completed.stderr.strip():
-            lines.append(completed.stderr.strip())
-        lines.append(f"Exit code: {completed.returncode}")
-        if completed.returncode != 0:
-            if optional:
-                lines.append("Continuing with the next step because this step is optional.")
-                continue
-            break
+    if report["status"] != "failed":
+        report["status"] = "degraded" if any(s["status"] != "ok" for s in report["steps"]) else "ok"
+    report["finished_at"] = utc_now()
+    report["message"] = {"ok": "All requested steps completed.", "degraded": "Completed with source fallback or optional-step failures; review the source alerts.", "failed": "Pipeline stopped before all requested steps completed. The public forecast may still be old."}[report["status"]]
+    write_report("run", report)
+    lines.append(report["message"])
     return "\n".join(lines)
+
+
+def start_background_task(task_key: str) -> tuple[bool, str]:
+    if task_key not in TASKS:
+        return False, "Unknown pipeline task."
+    if not TASK_LOCK.acquire(blocking=False):
+        return False, "Another pipeline task is already running."
+
+    def worker():
+        try:
+            DashboardHandler.last_output = run_task_unlocked(task_key)
+        except Exception as exc:
+            DashboardHandler.last_output = f"Pipeline error: {exc}"
+        finally:
+            TASK_LOCK.release()
+    try:
+        threading.Thread(target=worker, name="manual-pipeline", daemon=True).start()
+    except Exception:
+        TASK_LOCK.release()
+        raise
+    return True, "Pipeline started. Step status and source alerts will update below."
 
 
 def automatic_prediction_loop() -> None:
@@ -1666,6 +1713,8 @@ def required_role_for_page(path: str) -> str:
 
 
 def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
+    if path == "/api/pipeline-health":
+        return pipeline_health(auto_enabled=AUTO_PREDICTIONS_ENABLED, interval=max(1, AUTO_PREDICTION_INTERVAL_HOURS), running=TASK_LOCK.locked())
     period = query.get("period", ["last_week"])[0]
     if path == "/api/summary":
         return {"datasets": dataset_summary(), "artifacts": artifact_summary()}
@@ -2070,7 +2119,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         task_key = form.get("task", [""])[0]
-        DashboardHandler.last_output = run_task(task_key)
+        accepted, message = start_background_task(task_key)
+        if self.headers.get("Accept") == "application/json":
+            self.send_json({"accepted": accepted, "message": message})
+            return
+        if not accepted:
+            DashboardHandler.last_output = message
         self.send_response(303)
         token = token_from_query(query)
         self.send_header("Location", f"/super-admin?token={token}" if token else "/super-admin")

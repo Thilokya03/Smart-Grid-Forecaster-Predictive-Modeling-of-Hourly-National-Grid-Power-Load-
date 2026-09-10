@@ -1,6 +1,12 @@
 name: Update forecast data
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/update-forecast-data.yml"
+      - "ui/pipeline_runner.py"
+      - "ui/pipeline_health.py"
   schedule:
     - cron: "17 0,6,12,18 * * *"
       timezone: "Europe/London"
@@ -15,6 +21,7 @@ concurrency:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -38,24 +45,44 @@ jobs:
           python -m pip install -r requirements-render.txt
 
       - name: Refresh demand, weather, features, and forecasts
-        run: |
-          python uk_training_data_prep/download_latest_neso_demand.py || echo "::warning::NESO download failed; continuing with cached demand files."
-          python weather_pipeline/api_weather.py || echo "::warning::Weather API refresh failed; continuing with cached weather files."
-          python uk_training_data_prep/refresh_local_uk_features.py
-          python uk_training_data_prep/build_weather_feature_data.py
-          python uk_training_data_prep/build_hourly_load_data.py
-          python uk_training_data_prep/build_master_training_data.py
-          python uk_training_data_prep/build_forecast_feature_data.py
-          python ml_training/fast_gap_fill_and_forecast.py
+        id: pipeline
+        continue-on-error: true
+        run: python -m ui.pipeline_runner
 
       - name: Commit changed data and artifacts
+        id: publish
+        env:
+          PIPELINE_OUTCOME: ${{ steps.pipeline.outcome }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f data artifacts
+          if [ "$PIPELINE_OUTCOME" = "success" ]; then
+            git add -A -- data artifacts
+          else
+            # Publish diagnostics without replacing the last forecast with a partial run.
+            git add -A -- artifacts/pipeline_status
+          fi
           if git diff --cached --quiet; then
             echo "No data or artifact changes to commit."
           else
             git commit -m "Update forecast data [skip ci]"
             git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Request Render deployment when a hook is configured
+        if: steps.publish.outputs.changed == 'true'
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            curl --fail --silent --show-error --max-time 60 -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+          else
+            echo "::notice::No deploy hook configured. Render Auto-Deploy must be set to On Commit."
+          fi
+
+      - name: Mark incomplete refresh as failed
+        if: steps.pipeline.outcome == 'failure'
+        run: |
+          echo "::error::The refresh failed. Source and step diagnostics were retained for the super-admin dashboard."
+          exit 1

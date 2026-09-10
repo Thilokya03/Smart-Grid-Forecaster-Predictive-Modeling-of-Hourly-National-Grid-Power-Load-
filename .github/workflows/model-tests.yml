@@ -51,6 +51,7 @@ jobs:
             matplotlib \
             numpy \
             pandas \
+            requests \
             "pytest>=9.0" \
             scikit-learn \
             "torch>=2.0" \

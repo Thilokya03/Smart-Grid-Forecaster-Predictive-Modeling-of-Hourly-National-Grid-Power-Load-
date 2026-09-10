@@ -4,6 +4,7 @@ services:
     runtime: docker
     plan: free
     branch: main
+    autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /

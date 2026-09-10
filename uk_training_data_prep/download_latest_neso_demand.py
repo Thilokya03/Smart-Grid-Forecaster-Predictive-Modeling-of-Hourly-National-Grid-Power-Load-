@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import sys
 
 import pandas as pd
 import requests
@@ -7,6 +8,9 @@ from requests import RequestException
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from ui.pipeline_health import read_report, record_source
 RAW_OUTPUT_DIR = PROJECT_ROOT / "data" / "raw" / "neso"
 DOWNLOAD_INPUT_DIR = Path(os.getenv("DEMAND_INPUT_FOLDER", Path.home() / "Downloads"))
 CURRENT_YEAR = pd.Timestamp.now(tz="UTC").year
@@ -90,6 +94,7 @@ def download_latest_update() -> Path:
         response.raise_for_status()
     except RequestException as exc:
         if output_path.exists():
+            record_source("neso", "cached", f"Download failed ({type(exc).__name__}); cached NESO data was used.")
             print(f"NESO download failed: {exc}")
             print(f"Using cached NESO update instead -> {output_path}")
             return output_path
@@ -100,10 +105,11 @@ def download_latest_update() -> Path:
     temp_path.write_bytes(response.content)
 
     downloaded = read_demand_csv(temp_path)
-    if downloaded.empty:
-        raise ValueError("Downloaded NESO demand update is empty.")
+    if keep_only_complete_hours(normalize_for_merge(downloaded)).empty:
+        raise ValueError("Downloaded NESO update has no complete hours with valid demand.")
 
     os.replace(temp_path, output_path)
+    record_source("neso", "ok", "NESO download succeeded; source readings may still lag behind real time.")
     print(f"Downloaded latest NESO demand update -> {output_path}")
     print(f"Downloaded rows: {len(downloaded):,}")
     return output_path
@@ -136,8 +142,17 @@ def build_current_year_file(downloaded_path: Path) -> pd.DataFrame:
 
 
 def main() -> None:
-    downloaded_path = download_latest_update()
-    build_current_year_file(downloaded_path)
+    try:
+        downloaded_path = download_latest_update()
+        combined = build_current_year_file(downloaded_path)
+        if combined.empty:
+            raise ValueError("No valid current-year demand hours were available.")
+        timestamps = settlement_dates(combined[DATE_COLUMN]) + pd.to_timedelta((combined[PERIOD_COLUMN] - 1) // 2, unit="h")
+        status = read_report("neso")
+        record_source("neso", status.get("status", "ok"), status.get("message", "Demand updated."), latest_complete_hour=str(timestamps.max()), rows=int(len(combined)))
+    except Exception as exc:
+        record_source("neso", "failed", f"NESO update failed: {type(exc).__name__}: {exc}")
+        raise
 
 
 if __name__ == "__main__":

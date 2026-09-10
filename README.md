@@ -63,6 +63,10 @@ Access levels:
 
 Public pages:
 
+The [public forecast explorer](docs/public_dashboard.md) includes day filters,
+hourly/3-hour/6-hour averages, a demand heatmap, lower-demand planning windows,
+CSV downloads, calculated insights, and saved theme preferences.
+
 - `/`
 - `/forecast`
 - `/forecast/detailed`
@@ -78,6 +82,10 @@ python -m ui.pipeline_dashboard
 ```
 
 ## Automatic Predictions
+
+Super-admin's **Update Health & Alerts** panel reports source failures, cached
+fallbacks, overdue forecasts, and pipeline progress. See
+[pipeline monitoring and Render update setup](docs/pipeline_monitoring.md).
 
 Use these environment variables:
 

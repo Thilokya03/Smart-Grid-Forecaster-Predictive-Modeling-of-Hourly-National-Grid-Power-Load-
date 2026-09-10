@@ -26,6 +26,7 @@ from build_master_training_data import (  # noqa: E402
     standardize_holidays,
     standardize_weather,
 )
+from ui.pipeline_health import utc_now, write_report
 
 
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
@@ -449,6 +450,7 @@ def run(args: argparse.Namespace) -> dict:
     nowcast_start = latest_actual + pd.Timedelta(hours=1) if demand_lag_hours > 0 else None
     elapsed_seconds = time.perf_counter() - started
     summary = {
+        "generated_at": utc_now(),
         "model": "XGBoost fast recursive",
         "fast_estimators": config["params"]["n_estimators"],
         "horizons": horizons,
@@ -477,7 +479,7 @@ def run(args: argparse.Namespace) -> dict:
             "summary": str(summary_path.relative_to(PROJECT_ROOT)),
         },
     }
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_report("fast_prediction_summary", summary, OUTPUT_DIR)
     return summary
 
 

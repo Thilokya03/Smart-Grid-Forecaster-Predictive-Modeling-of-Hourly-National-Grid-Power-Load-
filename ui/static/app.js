@@ -1,6 +1,9 @@
 let selectedPeriod = "last_week";
 let selectedModel = "prophet_v1";
 const chartState = {};
+function escapeHtml(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
 const accessToken = new URLSearchParams(window.location.search).get("token") || "";
 let publicSettings = {};
 try {
@@ -55,7 +58,7 @@ function attachAccessTokenToLinks() {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(withAccessToken(url));
+  const response = await fetch(withAccessToken(url), {signal: AbortSignal.timeout(30000)});
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -87,6 +90,7 @@ async function loadSection(label, loader) {
 
 function lineChart(containerId, points, series, xKey, options = {}) {
   const el = document.getElementById(containerId);
+  if (!el) return;
   if (!points || points.length === 0) {
     el.innerHTML = "<p>No data available.</p>";
     return;
@@ -298,7 +302,8 @@ async function loadEvents() {
 
 async function loadForecast() {
   const data = await fetchJson("/api/weather-forecast");
-  document.getElementById("forecastRange").textContent = `Forecast range: ${data.range}`;
+  const range = document.getElementById("forecastRange");
+  if (range) range.textContent = `Forecast range: ${data.range}`;
   lineChart("forecastChart", data.points, [
     {key: "temperature_2m", label: "Temp C", color: "#c2410c"},
     {key: "precipitation", label: "Rain mm", color: "#0e7490"},
@@ -496,6 +501,61 @@ async function loadLastOutput() {
   document.getElementById("lastOutput").textContent = data.output || "No command has been run from this UI yet.";
 }
 
+let healthTimer;
+let healthLoading = false;
+let pipelineWasRunning = false;
+function healthTime(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(+date) ? value : date.toLocaleString("en-GB", {timeZone: "Europe/London"}) + " UK";
+}
+async function loadPipelineHealth() {
+  if (!document.getElementById("pipelineHealth") || healthLoading) return;
+  healthLoading = true;
+  clearTimeout(healthTimer);
+  let running = false;
+  try {
+    const data = await fetchJson("/api/pipeline-health");
+    running = data.running;
+    document.getElementById("pipelineHealthSummary").textContent = (running ? "Pipeline running. " : data.alerts.length ? `${data.alerts.length} update alerts. ` : "No update alerts. ") + "Checked " + healthTime(data.checked_at);
+    document.getElementById("pipelineAlerts").innerHTML = data.alerts.map(alert => `<div class="health-alert ${alert.severity === "error" ? "error" : "warning"}"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.detail)}</p><p><b>Next step:</b> ${escapeHtml(alert.action)}</p></div>`).join("");
+    document.getElementById("pipelineSourceStatus").innerHTML = Object.entries(data.sources).map(([name, source]) => `<div><strong>${escapeHtml(name.toUpperCase())}: ${escapeHtml(source.status || "unknown")}</strong><p>Last attempt: ${escapeHtml(healthTime(source.checked_at))}</p><p>Last successful fetch: ${escapeHtml(healthTime(source.last_success_at))}</p><p>${escapeHtml(source.message || "No source report has been published.")}</p></div>`).join("");
+    const schedule = data.scheduler;
+    document.getElementById("pipelineSchedule").textContent = (schedule.in_service_enabled ? `In-service scheduler: enabled, every ${schedule.interval_hours} hours. ` : "In-service scheduler: disabled; GitHub Actions must publish updates. ") + "Last bundled Actions report: " + healthTime(schedule.scheduled_run?.finished_at) + ". Latest run: " + (data.run.status || "not recorded") + "." + (data.deployment_commit ? " Deployed commit: " + data.deployment_commit.slice(0, 8) : "");
+    document.getElementById("pipelineSteps").innerHTML = '<thead><tr><th>Last-run step</th><th>Status</th><th>Finished (UK)</th><th>Details</th></tr></thead><tbody>' + ((data.run.steps || []).map(step => `<tr><td>${escapeHtml(step.script)}</td><td>${escapeHtml(step.status)}</td><td>${escapeHtml(healthTime(step.finished_at))}</td><td>${escapeHtml(step.message || (step.exit_code == null ? "" : "Exit " + step.exit_code))}</td></tr>`).join("") || '<tr><td colspan="4">No monitored run has been recorded yet.</td></tr>') + '</tbody>';
+    document.querySelectorAll(".task-grid button").forEach(button => { button.disabled = running; });
+    if (pipelineWasRunning && !running) {
+      document.getElementById("pipelineActionMessage").textContent = data.run.message || "Pipeline finished.";
+      await loadSection("Last output", loadLastOutput);
+    }
+    pipelineWasRunning = running;
+  } catch {
+    document.getElementById("pipelineHealthSummary").textContent = "Update health could not be checked. Previously displayed status may be out of date; retry when the service is available.";
+  } finally {
+    healthLoading = false;
+    healthTimer = setTimeout(() => { if (!document.hidden) loadPipelineHealth(); else healthTimer = setTimeout(loadPipelineHealth, 30000); }, running ? 3000 : 30000);
+  }
+}
+
+document.getElementById("checkPipelineHealth")?.addEventListener("click", loadPipelineHealth);
+document.querySelectorAll(".task-grid form").forEach(form => form.addEventListener("submit", async event => {
+  event.preventDefault();
+  const message = document.getElementById("pipelineActionMessage");
+  message.textContent = "Requesting pipeline run...";
+  document.querySelectorAll(".task-grid button").forEach(button => { button.disabled = true; });
+  document.getElementById("pipelineHealth").scrollIntoView({block: "start"});
+  try {
+    const response = await fetch(withAccessToken("/run"), {method: "POST", headers: {"Accept": "application/json"}, body: new URLSearchParams(new FormData(form)), signal: AbortSignal.timeout(15000)});
+    if (!response.ok) throw new Error("Request failed");
+    const data = await response.json();
+    message.textContent = data.message;
+    if (data.accepted) pipelineWasRunning = true;
+  } catch {
+    message.textContent = "The request could not be confirmed. Check pipeline status before retrying; the run may have started.";
+  }
+  await loadPipelineHealth();
+}));
+
 function clearLoadingErrors() {
   const box = document.getElementById("loadErrors");
   if (box) box.remove();
@@ -503,6 +563,7 @@ function clearLoadingErrors() {
 
 async function refreshAll() {
   clearLoadingErrors();
+  await loadPipelineHealth();
   await loadSection("Summary", loadSummary);
   await loadSection("KPIs", loadKpis);
   await loadSection("Charts", loadCharts);

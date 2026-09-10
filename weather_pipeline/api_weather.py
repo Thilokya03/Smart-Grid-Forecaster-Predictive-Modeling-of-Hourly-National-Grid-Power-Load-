@@ -1,5 +1,6 @@
 import sqlite3
 import time
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9,6 +10,11 @@ import requests
 from requests import RequestException
 
 from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from ui.pipeline_health import record_source
 
 
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
@@ -240,7 +246,7 @@ def validate_window(
     actual_rows = len(df)
 
     if actual_rows != expected_rows:
-        print(
+        raise ValueError(
             f"Warning: {window_name} has {actual_rows:,} rows; "
             f"expected {expected_rows:,}."
         )
@@ -248,7 +254,7 @@ def validate_window(
     actual_timestamps = pd.DatetimeIndex(df["timestamp"].drop_duplicates().sort_values())
     missing_timestamps = expected_timestamps.difference(actual_timestamps)
     if len(missing_timestamps) > 0:
-        print(
+        raise ValueError(
             f"Warning: {window_name} is missing {len(missing_timestamps)} hourly "
             f"timestamps. First missing: {missing_timestamps[0]}"
         )
@@ -271,16 +277,17 @@ def average_city_weather(df: pd.DataFrame, source: str) -> pd.DataFrame:
     return averaged[["timestamp", *HOURLY_VARIABLES, "city", "source"]]
 
 
-def update_bridge_from_rolling_history() -> None:
+def update_bridge_from_rolling_history() -> dict:
     if not RUN_BRIDGE_MAINTENANCE_AFTER_UPDATE:
-        return
+        return {"ok": True}
 
     try:
         import maintain_weather_bridge_csv
 
-        maintain_weather_bridge_csv.main()
+        return {"ok": True, **(maintain_weather_bridge_csv.main() or {})}
     except Exception as exc:
         print(f"Warning: bridge maintenance failed after weather update: {exc}")
+        return {"ok": False}
 
 
 def use_cached_weather_outputs(exc: Exception) -> bool:
@@ -290,6 +297,7 @@ def use_cached_weather_outputs(exc: Exception) -> bool:
     print(f"Weather API fetch failed: {exc}")
     print(f"Using cached weather history -> {HISTORY_OUTPUT}")
     print(f"Using cached weather forecast -> {FORECAST_OUTPUT}")
+    record_source("weather", "cached", f"Weather fetch failed ({type(exc).__name__}); cached weather files were used.")
     update_bridge_from_rolling_history()
     return True
 
@@ -312,11 +320,15 @@ def run_once() -> None:
         print(f"Fetching {city}...")
         try:
             city_weather = fetch_weather_window(city, latitude, longitude)
-        except RequestException as exc:
+        except (RequestException, ValueError, RuntimeError) as exc:
             if use_cached_weather_outputs(exc):
                 return
             raise
         history, forecast = split_windows(city_weather, anchor_hour)
+        for frame, start, end, name in ((history, history_start, history_end, "history"), (forecast, forecast_start, forecast_end, "forecast")):
+            validate_window(frame, build_expected_timestamps(start, end), f"{city} {name}")
+            if frame[HOURLY_VARIABLES].isna().any().any():
+                raise ValueError(f"{city} {name} contains missing weather values.")
         history_frames.append(history)
         forecast_frames.append(forecast)
         time.sleep(SLEEP_BETWEEN_CITIES)
@@ -347,7 +359,8 @@ def run_once() -> None:
     print(f"Saved history CSV -> {HISTORY_OUTPUT}")
     print(f"Saved forecast CSV -> {FORECAST_OUTPUT}")
     print(f"Saved rolling archive DB -> {DB_PATH}")
-    update_bridge_from_rolling_history()
+    bridge = update_bridge_from_rolling_history()
+    record_source("weather", "ok", "Weather fetch succeeded.", forecast_start=str(forecast_start), forecast_end=str(forecast_end), history_end=str(history_end), forecast_rows=int(len(forecast_df)), bridge=bridge)
 
 
 def seconds_until_next_hour() -> float:
@@ -369,4 +382,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        record_source("weather", "failed", f"Weather update failed: {type(exc).__name__}: {exc}")
+        raise
