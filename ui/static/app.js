@@ -60,6 +60,31 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function setLoadingError(label, error) {
+  const header = document.querySelector("main header");
+  if (!header) return;
+  let box = document.getElementById("loadErrors");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "loadErrors";
+    box.className = "load-errors";
+    header.insertAdjacentElement("afterend", box);
+  }
+  const message = error && error.message ? error.message : String(error);
+  const item = document.createElement("div");
+  item.textContent = `${label} did not load: ${message.slice(0, 220)}`;
+  box.appendChild(item);
+}
+
+async function loadSection(label, loader) {
+  try {
+    await loader();
+  } catch (error) {
+    console.error(`${label} failed`, error);
+    setLoadingError(label, error);
+  }
+}
+
 function lineChart(containerId, points, series, xKey, options = {}) {
   const el = document.getElementById(containerId);
   if (!points || points.length === 0) {
@@ -472,14 +497,26 @@ async function loadLastOutput() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadSummary(), loadKpis(), loadCharts(), loadEvents(), loadForecastInputs(), loadModelValidation(), loadNotebookVisuals(), loadLastOutput()]);
+  await Promise.all([
+    loadSection("Summary", loadSummary),
+    loadSection("KPIs", loadKpis),
+    loadSection("Charts", loadCharts),
+    loadSection("Events", loadEvents),
+    loadSection("Prediction inputs", loadForecastInputs),
+    loadSection("Model validation", loadModelValidation),
+    loadSection("Notebook evidence", loadNotebookVisuals),
+    loadSection("Last output", loadLastOutput),
+  ]);
 }
 
 document.querySelectorAll("[data-period]").forEach((button) => {
   button.addEventListener("click", async () => {
     selectedPeriod = button.dataset.period;
     document.querySelectorAll("[data-period]").forEach((b) => b.classList.toggle("active", b === button));
-    await Promise.all([loadKpis(), loadCharts()]);
+    await Promise.all([
+      loadSection("KPIs", loadKpis),
+      loadSection("Charts", loadCharts),
+    ]);
   });
 });
 
@@ -487,7 +524,7 @@ document.querySelectorAll("[data-model]").forEach((button) => {
   button.addEventListener("click", async () => {
     selectedModel = button.dataset.model;
     document.querySelectorAll("[data-model]").forEach((b) => b.classList.toggle("model-active", b === button));
-    await loadModelValidation();
+    await loadSection("Model validation", loadModelValidation);
   });
 });
 

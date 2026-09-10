@@ -254,6 +254,8 @@ SUPER_ADMIN_API_PATHS = {
     "/api/last-output",
 }
 TASK_LOCK = threading.Lock()
+MASTER_CACHE_LOCK = threading.Lock()
+MASTER_CACHE: dict[str, object] = {"path": None, "mtime": None, "frame": pd.DataFrame()}
 
 def project_path(relative_path: Path) -> Path:
     return PROJECT_ROOT / relative_path
@@ -340,27 +342,34 @@ def load_master() -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
 
-    frame = pd.read_csv(path, low_memory=False)
-    frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
-    frame = frame.dropna(subset=["timestamp", "demand_mw"]).sort_values("timestamp").reset_index(drop=True)
+    mtime = path.stat().st_mtime
+    with MASTER_CACHE_LOCK:
+        if MASTER_CACHE["path"] == path and MASTER_CACHE["mtime"] == mtime:
+            return MASTER_CACHE["frame"].copy()
 
-    numeric_columns = [
-        "demand_mw",
-        "temperature_2m",
-        "apparent_temperature",
-        "relative_humidity_2m",
-        "precipitation",
-        "cloud_cover",
-        "wind_speed_10m",
-        "shortwave_radiation",
-        "is_holiday",
-        "cal_is_event_day",
-        "cal_is_non_working_day",
-    ]
-    for column in numeric_columns:
-        if column in frame.columns:
-            frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    return frame
+        frame = pd.read_csv(path, low_memory=False)
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame = frame.dropna(subset=["timestamp", "demand_mw"]).sort_values("timestamp").reset_index(drop=True)
+
+        numeric_columns = [
+            "demand_mw",
+            "temperature_2m",
+            "apparent_temperature",
+            "relative_humidity_2m",
+            "precipitation",
+            "cloud_cover",
+            "wind_speed_10m",
+            "shortwave_radiation",
+            "is_holiday",
+            "cal_is_event_day",
+            "cal_is_non_working_day",
+        ]
+        for column in numeric_columns:
+            if column in frame.columns:
+                frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+        MASTER_CACHE.update({"path": path, "mtime": mtime, "frame": frame})
+        return frame.copy()
 
 
 def filter_period(frame: pd.DataFrame, period: str) -> pd.DataFrame:
