@@ -1,0 +1,66 @@
+name: Model tests
+
+on:
+  push:
+    paths:
+      - ".github/workflows/model-tests.yml"
+      - "models/**"
+      - "scripts/**"
+      - "tests/**"
+      - "Notebooks/timesfm_forecasting.ipynb"
+      - "requirements*.txt"
+  pull_request:
+    paths:
+      - ".github/workflows/model-tests.yml"
+      - "models/**"
+      - "scripts/**"
+      - "tests/**"
+      - "Notebooks/timesfm_forecasting.ipynb"
+      - "requirements*.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MPLBACKEND: Agg
+      MPLCONFIGDIR: /tmp/matplotlib
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            matplotlib \
+            numpy \
+            pandas \
+            "pytest>=9.0" \
+            scikit-learn \
+            "torch>=2.0" \
+            "timesfm[torch]==2.0.2"
+
+      - name: Check installed dependencies
+        run: python -m pip check
+
+      - name: Compile Python sources
+        run: python -m compileall -q models scripts tests
+
+      - name: Run model tests
+        run: pytest

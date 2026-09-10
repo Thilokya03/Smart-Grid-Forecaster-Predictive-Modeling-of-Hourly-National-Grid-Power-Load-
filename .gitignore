@@ -57,3 +57,7 @@ desktop.ini
 
 # Tracked processed dataset for model training/submission
 !data/processed/master_training_data.csv
+
+
+# results
+results/

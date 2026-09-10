@@ -7,6 +7,7 @@ This project builds a UK hourly demand and weather dataset, trains/serves foreca
 - `weather_pipeline/` - weather download, rolling update, and bridge maintenance scripts
 - `uk_training_data_prep/` - NESO demand, holiday/economic sync, and master dataset build scripts
 - `ml_training/` - model training, fast gap-fill, nowcast bridge, and forecast scripts
+- `models/` - newer model experiments and reusable model code, including LSTM and TimesFM
 - `ui/` - Python dashboard server and static frontend assets
 - `data/` - generated local datasets
 - `artifacts/` - generated model files, validation outputs, and forecasts
@@ -60,6 +61,14 @@ Access levels:
 - Admin model comparison: `http://127.0.0.1:8765/admin?token=<DASHBOARD_ADMIN_TOKEN>`
 - Super-admin controls: `http://127.0.0.1:8765/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>`
 
+Public pages:
+
+- `/`
+- `/forecast`
+- `/forecast/detailed`
+- `/forecast/inputs`
+- `/settings`
+
 Set tokens before exposing the dashboard:
 
 ```powershell
@@ -73,6 +82,8 @@ python -m ui.pipeline_dashboard
 Use these environment variables:
 
 ```text
+DASHBOARD_ADMIN_TOKEN=change-me-admin
+DASHBOARD_SUPER_ADMIN_TOKEN=change-me-super
 AUTO_PREDICTIONS_ENABLED=true
 AUTO_PREDICTION_INTERVAL_HOURS=6
 AUTO_PREDICTION_RUN_ON_START=false
@@ -85,6 +96,8 @@ Super-admins can still refresh immediately from:
 ```text
 /super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
+
+If an automatic refresh is already running, the dashboard rejects overlapping manual runs and asks you to try again after it finishes.
 
 ## Docker
 
@@ -162,3 +175,5 @@ The first deploy uses `AUTO_PREDICTION_RUN_ON_START=true`, so the service starts
 ## NESO Lag Handling
 
 NESO demand data can lag behind real time. The latest-prediction task treats the NESO download step as non-blocking: if fresh demand is not available, it continues with the latest cached demand, refreshes weather/features, fills the missing demand interval as a nowcast bridge, and then produces the 24/48/72/168 hour forecasts.
+
+The public forecast page shows `Latest Actual Demand` and `Demand Data Lag` so users can see when part of the forecast depends on that nowcast bridge.
