@@ -6,9 +6,9 @@ import pandas as pd
 from prophet import Prophet
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "prophet_tuned"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "prophet_tuned"
 CONFIG_PATH = OUTPUT_DIR / "prophet_outputs" / "best_prophet_config.json"
 
 PREDICTIONS_PATH = OUTPUT_DIR / "validation_predictions.csv"

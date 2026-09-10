@@ -324,11 +324,11 @@ def save_model_comparison(
     project_root = Path(project_root)
     rows = [
         _read_json_metrics(
-            project_root / "artifacts" / "dnn" / "dnn_outputs" / "dnn_metrics.json",
+            project_root / "results" / "dnn" / "dnn_outputs" / "dnn_metrics.json",
             "LSTM 4-Fold CV",
         ),
         _read_model_metrics(
-            project_root / "artifacts" / "prophet_tuned" / "validation_metrics.csv",
+            project_root / "results" / "prophet_tuned" / "validation_metrics.csv",
             "Prophet Tuned 4-Fold CV",
         ),
         {"Model": "TimesFM 4-Fold CV", **timesfm_metrics},

@@ -11,13 +11,13 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dnn_4fold_cv import (  # noqa: E402
+from models.lstm.dnn_4fold_cv import (  # noqa: E402
     BATCH_SIZE,
     DENSE_SIZE,
     DROPOUT,
@@ -38,7 +38,7 @@ from dnn_4fold_cv import (  # noqa: E402
 
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
 FORECAST_FEATURE_PATH = PROJECT_ROOT / "data" / "processed" / "forecast_feature_data.csv"
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "ensemble"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "ensemble"
 TARGET_COLUMN = "demand_mw"
 
 FINAL_TEST_START = pd.Timestamp("2026-06-01 00:00:00")
@@ -48,14 +48,14 @@ DNN_JUNE_MAX_EPOCHS = EPOCHS
 DNN_FUTURE_MAX_EPOCHS = 5
 
 CV_METRIC_PATHS = {
-    "XGBoost": PROJECT_ROOT / "artifacts" / "xgboost" / "validation_metrics.csv",
-    "Prophet": PROJECT_ROOT / "artifacts" / "prophet_tuned" / "validation_metrics.csv",
-    "DNN_LSTM": PROJECT_ROOT / "artifacts" / "DNN" / "dnn_outputs" / "dnn_validation_metrics.csv",
-    "SARIMAX": PROJECT_ROOT / "artifacts" / "sarimax" / "sarimax_outputs" / "sarimax_cv_summary.json",
+    "XGBoost": PROJECT_ROOT / "results" / "xgboost" / "validation_metrics.csv",
+    "Prophet": PROJECT_ROOT / "results" / "prophet_tuned" / "validation_metrics.csv",
+    "DNN_LSTM": PROJECT_ROOT / "results" / "dnn" / "dnn_outputs" / "dnn_validation_metrics.csv",
+    "SARIMAX": PROJECT_ROOT / "results" / "sarimax" / "sarimax_outputs" / "sarimax_cv_summary.json",
 }
 
-XGB_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
-PROPHET_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "prophet_tuned" / "prophet_outputs" / "best_prophet_config.json"
+XGB_CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
+PROPHET_CONFIG_PATH = PROJECT_ROOT / "results" / "prophet_tuned" / "prophet_outputs" / "best_prophet_config.json"
 
 
 def set_seed() -> None:

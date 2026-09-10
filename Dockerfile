@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY weather_pipeline ./weather_pipeline
 COPY uk_training_data_prep ./uk_training_data_prep
-COPY ml_training ./ml_training
+COPY models ./models
 COPY ui ./ui
 COPY README.md .
 

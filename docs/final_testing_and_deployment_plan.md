@@ -21,14 +21,14 @@ June 2026 must be used once as the final locked holdout after final model select
 Expected June outputs should follow this naming pattern:
 
 ```text
-artifacts/xgboost/xgb_final_june_metrics.json
-artifacts/xgboost/xgb_final_june_predictions.csv
-artifacts/prophet_tuned/prophet_final_june_metrics.json
-artifacts/prophet_tuned/prophet_final_june_predictions.csv
-artifacts/sarimax/sarimax_outputs/sarimax_final_june_metrics.json
-artifacts/sarimax/sarimax_outputs/sarimax_final_june_predictions.csv
-artifacts/dnn/dnn_outputs/dnn_final_june_metrics.json
-artifacts/dnn/dnn_outputs/dnn_final_june_predictions.csv
+results/xgboost/xgb_final_june_metrics.json
+results/xgboost/xgb_final_june_predictions.csv
+results/prophet_tuned/prophet_final_june_metrics.json
+results/prophet_tuned/prophet_final_june_predictions.csv
+results/sarimax/sarimax_outputs/sarimax_final_june_metrics.json
+results/sarimax/sarimax_outputs/sarimax_final_june_predictions.csv
+results/dnn/dnn_outputs/dnn_final_june_metrics.json
+results/dnn/dnn_outputs/dnn_final_june_predictions.csv
 ```
 
 ## Production Forecast Serving

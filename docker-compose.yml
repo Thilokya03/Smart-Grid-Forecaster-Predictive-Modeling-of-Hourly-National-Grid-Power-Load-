@@ -8,6 +8,6 @@ services:
       DEMAND_INPUT_FOLDER: /input/demand
     volumes:
       - ./data:/app/data
-      - ./artifacts:/app/artifacts
+      - ./results:/app/results
       - ${USERPROFILE}/Downloads:/input/demand:ro
     restart: unless-stopped

@@ -7,12 +7,12 @@ This folder downloads weather for 10 UK cities, averages those city values into 
 
 - `weather_pipeline/` - weather download, rolling update, and bridge maintenance scripts
 - `uk_training_data_prep/` - load, holiday/economic sync, and master dataset build scripts
-- `ml_training/` - Prophet training scripts and Kaggle notebook
+- `models/` - all model implementations, training scripts, and model notebooks
 - `data/weather_historical/` - generated historical UK city and average weather CSVs
 - `data/weather_runtime/` - generated rolling weather, bridge CSVs, and local weather DB
 - `data/external/uk_features/` - synced UK calendar and economic feature files
 - `data/processed/` - generated `master_training_data.csv`
-- `artifacts/` - generated model files, validation predictions, and metrics
+- `results/` - generated model files, validation predictions, and metrics
 
 =======
 >>>>>>> origin/dev
@@ -241,7 +241,7 @@ http://127.0.0.1:8765
 The compose file mounts:
 
 - `./data` to `/app/data`
-- `./artifacts` to `/app/artifacts`
+- `./results` to `/app/results`
 - your Windows `Downloads` folder to `/input/demand`
 
 The demand builder reads `DEMAND_INPUT_FOLDER`, so inside Docker it uses `/input/demand`, while local runs default to your user `Downloads` folder.

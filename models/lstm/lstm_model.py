@@ -21,7 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
 
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "dnn" / "dnn_outputs"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "dnn" / "dnn_outputs"
 
 PREDICTIONS_PATH = OUTPUT_DIR / "dnn_predictions.csv"
 ALL_HORIZONS_PATH = OUTPUT_DIR / "dnn_predictions_all_horizons.csv"

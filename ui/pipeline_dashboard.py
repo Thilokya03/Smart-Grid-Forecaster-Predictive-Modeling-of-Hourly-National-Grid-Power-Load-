@@ -24,11 +24,11 @@ FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
 HOLIDAYS_PATH = Path("data") / "external" / "uk_features" / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = Path("data") / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
 DOWNLOADS_DIR = Path.home() / "Downloads"
-PROPHET_TUNED_DIR = Path("artifacts") / "prophet_tuned" / "prophet_outputs"
-XGBOOST_DIR = Path("artifacts") / "xgboost"
+PROPHET_TUNED_DIR = Path("results") / "prophet_tuned" / "prophet_outputs"
+XGBOOST_DIR = Path("results") / "xgboost"
 XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
-SARIMAX_OUTPUT_DIR = Path("artifacts") / "sarimax" / "sarimax_outputs"
-DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
+SARIMAX_OUTPUT_DIR = Path("results") / "sarimax" / "sarimax_outputs"
+DNN_OUTPUT_DIR = Path("results") / "dnn" / "dnn_outputs"
 
 NOTEBOOK_SOURCES = {
     "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
@@ -51,9 +51,9 @@ SUPPORT_DATASETS = [
 ]
 
 ARTIFACTS = [
-    ("Prophet v1 baseline metrics", Path("artifacts") / "prophet_baseline" / "metrics.json"),
-    ("Prophet v1 baseline predictions", Path("artifacts") / "prophet_baseline" / "validation_predictions.csv"),
-    ("Prophet v1 baseline model", Path("artifacts") / "prophet_baseline" / "prophet_model.json"),
+    ("Prophet v1 baseline metrics", Path("results") / "prophet_baseline" / "metrics.json"),
+    ("Prophet v1 baseline predictions", Path("results") / "prophet_baseline" / "validation_predictions.csv"),
+    ("Prophet v1 baseline model", Path("results") / "prophet_baseline" / "prophet_model.json"),
     ("Prophet tuned config", PROPHET_TUNED_DIR / "best_prophet_config.json"),
     ("Prophet tuned folds", PROPHET_TUNED_DIR / "prophet_tuning_folds.csv"),
     ("XGBoost best config", XGBOOST_OUTPUT_DIR / "best_xgb_config.json"),
@@ -61,7 +61,7 @@ ARTIFACTS = [
     ("XGBoost tuning folds", XGBOOST_OUTPUT_DIR / "xgb_tuning_folds.csv"),
     ("Prophet vs XGBoost CV", XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv"),
     ("Prophet vs XGBoost folds", XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_by_fold.csv"),
-    ("XGBoost production model", Path("artifacts") / "xgboost" / "xgboost_model.json"),
+    ("XGBoost production model", Path("results") / "xgboost" / "xgboost_model.json"),
     ("SARIMAX CV summary", SARIMAX_OUTPUT_DIR / "sarimax_cv_summary.json"),
     ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),
     ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
@@ -74,18 +74,18 @@ ARTIFACTS = [
 MODEL_OUTPUTS = {
     "prophet_v1": {
         "label": "Prophet v1 Baseline",
-        "metrics": Path("artifacts") / "prophet_baseline" / "metrics.json",
-        "predictions": Path("artifacts") / "prophet_baseline" / "validation_predictions.csv",
+        "metrics": Path("results") / "prophet_baseline" / "metrics.json",
+        "predictions": Path("results") / "prophet_baseline" / "validation_predictions.csv",
     },
     "prophet_tuned": {
         "label": "Prophet Tuned CV Candidate",
         "metrics": PROPHET_TUNED_DIR / "best_prophet_config.json",
-        "predictions": Path("artifacts") / "prophet_tuned" / "validation_predictions.csv",
+        "predictions": Path("results") / "prophet_tuned" / "validation_predictions.csv",
     },
     "prophet_v2": {
         "label": "Prophet v2",
-        "metrics": Path("artifacts") / "prophet_v2" / "metrics.json",
-        "predictions": Path("artifacts") / "prophet_v2" / "validation_predictions.csv",
+        "metrics": Path("results") / "prophet_v2" / "metrics.json",
+        "predictions": Path("results") / "prophet_v2" / "validation_predictions.csv",
     },
     "xgboost": {
         "label": "XGBoost CV Winner",
@@ -146,8 +146,8 @@ TASKS = {
         ],
     ),
     "monthly_update": ("Run Monthly Dataset Update", [(Path("uk_training_data_prep") / "run_monthly_dataset_update.py", False)]),
-    "train_prophet_v1": ("Train Prophet v1", [(Path("ml_training") / "train_prophet_model.py", False)]),
-    "train_prophet_v2": ("Train Prophet v2", [(Path("ml_training") / "train_prophet_model_v2.py", False)]),
+    "train_prophet_v1": ("Train Prophet v1", [(Path("models") / "prophet" / "train_prophet_model.py", False)]),
+    "train_prophet_v2": ("Train Prophet v2", [(Path("models") / "prophet" / "train_prophet_model_v2.py", False)]),
 }
 
 PIPELINE_ACTIONS = [
@@ -994,8 +994,8 @@ def xgboost_visuals() -> dict:
         "param_rows": param_rows,
         "features": config.get("features", []),
         "message": (
-            "XGBoost visuals use CV artifacts from artifacts/xgboost_model/xgboost_outputs. "
-            "The XGBoost validation curve uses artifacts/xgboost/validation_predictions.csv."
+            "XGBoost visuals use CV artifacts from results/xgboost_model/xgboost_outputs. "
+            "The XGBoost validation curve uses results/xgboost/validation_predictions.csv."
         ),
     }
 
@@ -1057,7 +1057,7 @@ def prophet_tuned_visuals() -> dict:
         "fold_points": fold_rows,
         "param_rows": [{"parameter": key, "value": value} for key, value in params.items()],
         "regressor_rows": [{"feature": feature} for feature in config.get("regressors", [])],
-        "message": "Prophet tuned visuals use CV artifacts from artifacts/prophet_tuned/prophet_outputs.",
+        "message": "Prophet tuned visuals use CV artifacts from results/prophet_tuned/prophet_outputs.",
     }
 
 
@@ -1096,7 +1096,7 @@ def sarimax_visuals() -> dict:
         "fold_points": fold_rows,
         "exog_rows": [{"feature": feature} for feature in summary.get("exog_cols", order.get("exog_cols", []))],
         "summary": summary,
-        "message": "SARIMAX visuals use CV artifacts from artifacts/sarimax/sarimax_outputs.",
+        "message": "SARIMAX visuals use CV artifacts from results/sarimax/sarimax_outputs.",
     }
 
 
@@ -1171,7 +1171,7 @@ def dnn_visuals() -> dict:
             },
         ],
         "message": (
-            "DNN visuals use fold-matched CV artifacts from artifacts/dnn/dnn_outputs when exported. "
+            "DNN visuals use fold-matched CV artifacts from results/dnn/dnn_outputs when exported. "
             "If those files are missing, the page falls back to the DNN_Forecasting.ipynb holdout evidence."
         ),
     }
@@ -1232,7 +1232,7 @@ def model_cv_comparison_rows() -> list[dict]:
 
 
 def ml_model_registry() -> dict:
-    prophet_baseline_model = project_path(Path("artifacts") / "prophet_baseline" / "prophet_model.json")
+    prophet_baseline_model = project_path(Path("results") / "prophet_baseline" / "prophet_model.json")
     prophet_tuned_config = project_path(PROPHET_TUNED_DIR / "best_prophet_config.json")
     xgb_config = project_path(XGBOOST_OUTPUT_DIR / "best_xgb_config.json")
     xgb_model = project_path(XGBOOST_DIR / "xgboost_model.json")
@@ -1246,15 +1246,15 @@ def ml_model_registry() -> dict:
                 "id": "prophet_baseline",
                 "label": "Prophet v1 Baseline",
                 "status": "servable" if prophet_baseline_model.exists() else "missing_model",
-                "model_path": str(Path("artifacts") / "prophet_baseline" / "prophet_model.json"),
-                "metrics_path": str(Path("artifacts") / "prophet_baseline" / "metrics.json"),
+                "model_path": str(Path("results") / "prophet_baseline" / "prophet_model.json"),
+                "metrics_path": str(Path("results") / "prophet_baseline" / "metrics.json"),
             },
             {
                 "id": "prophet_tuned",
                 "label": "Prophet Tuned CV Candidate",
                 "status": "config_ready" if prophet_tuned_config.exists() else "missing_config",
                 "config_path": str(PROPHET_TUNED_DIR / "best_prophet_config.json"),
-                "model_path": str(Path("artifacts") / "prophet_tuned" / "prophet_model.json"),
+                "model_path": str(Path("results") / "prophet_tuned" / "prophet_model.json"),
             },
             {
                 "id": "xgboost",

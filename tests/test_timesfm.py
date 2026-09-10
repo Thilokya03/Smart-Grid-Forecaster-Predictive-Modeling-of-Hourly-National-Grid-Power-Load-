@@ -168,8 +168,8 @@ class TimesFmUtilityTests(unittest.TestCase):
     def test_model_comparison_reads_json_and_lowercase_csv(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
-            lstm_dir = root / "artifacts" / "dnn" / "dnn_outputs"
-            prophet_dir = root / "artifacts" / "prophet_tuned"
+            lstm_dir = root / "results" / "dnn" / "dnn_outputs"
+            prophet_dir = root / "results" / "prophet_tuned"
             lstm_dir.mkdir(parents=True)
             prophet_dir.mkdir(parents=True)
             (lstm_dir / "dnn_metrics.json").write_text(
