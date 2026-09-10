@@ -1,8 +1,8 @@
 {
   "source": "neso",
   "status": "ok",
-  "checked_at": "2026-09-10T14:16:27+00:00",
-  "last_success_at": "2026-09-10T14:16:27+00:00",
+  "checked_at": "2026-09-10T14:59:05+00:00",
+  "last_success_at": "2026-09-10T14:59:05+00:00",
   "message": "NESO download succeeded; source readings may still lag behind real time.",
   "latest_complete_hour": "2026-09-10 07:00:00",
   "rows": 12110

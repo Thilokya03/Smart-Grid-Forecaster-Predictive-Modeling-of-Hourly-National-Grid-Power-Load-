@@ -1,5 +1,4 @@
 timestamp,predicted_demand_mw,actual_demand_mw,source,missing_features
-2026-09-10 16:00:00,27248.0625,,recursive_forecast_prediction,
 2026-09-10 17:00:00,28010.833984375,,recursive_forecast_prediction,
 2026-09-10 18:00:00,28350.216796875,,recursive_forecast_prediction,
 2026-09-10 19:00:00,28287.357421875,,recursive_forecast_prediction,
@@ -23,3 +22,4 @@ timestamp,predicted_demand_mw,actual_demand_mw,source,missing_features
 2026-09-11 13:00:00,23446.203125,,recursive_forecast_prediction,
 2026-09-11 14:00:00,22325.04296875,,recursive_forecast_prediction,
 2026-09-11 15:00:00,23936.49609375,,recursive_forecast_prediction,
+2026-09-11 16:00:00,24411.763671875,,recursive_forecast_prediction,
