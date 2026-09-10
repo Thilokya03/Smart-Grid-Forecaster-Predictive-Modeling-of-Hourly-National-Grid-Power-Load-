@@ -11,12 +11,14 @@
     <aside>
       <h1>UK Smart Grid Forecaster</h1>
       <nav>
+        <a href="/">Public Forecast</a>
+        <a href="/admin">Admin Models</a>
         <a href="#overview">Overview</a>
         <a href="#eda">Exploratory Analysis</a>
         <a href="#events">Special Days</a>
         <a href="#predictionInputs">Prediction Inputs</a>
         <a href="#forecastModels">Forecast Models</a>
-        <a href="/model-comparison">Model Comparison</a>
+        <a href="/admin">Model Comparison</a>
         <a href="#notebookModels">Notebook Logs</a>
         <a href="#pipeline">Pipeline</a>
         <a href="#models">Models</a>
@@ -103,7 +105,8 @@
       <section id="pipeline">
         <h3>Pipeline Actions</h3>
         <div class="task-grid">
-          <form class="task-primary" method="post" action="/run"><input type="hidden" name="task" value="update_all_live"><button type="submit">Update Demand + Weather + All Datasets</button></form>
+          <form class="task-primary" method="post" action="/run"><input type="hidden" name="task" value="refresh_latest_predictions"><button type="submit">Refresh Latest Predictions Now</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="update_all_live"><button type="submit">Update Demand + Weather + All Datasets</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="update_weather_forecast"><button type="submit">Update Weather + Forecast Inputs</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="update_demand"><button type="submit">Update NESO Demand + Rebuild Master</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="monthly_update"><button type="submit">Run Monthly Dataset Update</button></form>
@@ -112,6 +115,7 @@
           <form method="post" action="/run"><input type="hidden" name="task" value="build_weather"><button type="submit">Build Combined Weather</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="build_master"><button type="submit">Build Master Dataset</button></form>
           <form method="post" action="/run"><input type="hidden" name="task" value="build_forecast_features"><button type="submit">Build Forecast Feature Dataset</button></form>
+          <form method="post" action="/run"><input type="hidden" name="task" value="fast_gap_fill_forecast"><button type="submit">Fast Gap Fill + Forecast</button></form>
         </div>
       </section>
 
