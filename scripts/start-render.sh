@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-APP_DIR="${APP_DIR:-/app}"
-STORAGE_DIR="${STORAGE_DIR:-/app/storage}"
+APP_DIR="${APP_DIR:-$(pwd)}"
+STORAGE_DIR="${STORAGE_DIR:-$APP_DIR/storage}"
 
 if [ "${RENDER:-}" = "true" ]; then
   mkdir -p "$STORAGE_DIR/data" "$STORAGE_DIR/artifacts" /input/demand
