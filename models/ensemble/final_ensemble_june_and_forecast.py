@@ -46,6 +46,7 @@ FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 SEED = 42
 DNN_JUNE_MAX_EPOCHS = EPOCHS
 DNN_FUTURE_MAX_EPOCHS = 5
+SARIMAX_MAXITER = 50
 
 CV_METRIC_PATHS = {
     "XGBoost": PROJECT_ROOT / "results" / "xgboost" / "validation_metrics.csv",
@@ -56,6 +57,7 @@ CV_METRIC_PATHS = {
 
 XGB_CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
 PROPHET_CONFIG_PATH = PROJECT_ROOT / "results" / "prophet_tuned" / "prophet_outputs" / "best_prophet_config.json"
+SARIMAX_CONFIG_PATH = PROJECT_ROOT / "results" / "sarimax" / "sarimax_outputs" / "sarimax_order.json"
 
 
 def set_seed() -> None:
@@ -120,6 +122,8 @@ def add_common_features(frame: pd.DataFrame, full_history: pd.DataFrame) -> pd.D
     prepared["dow_cos"] = np.cos(2 * np.pi * prepared["day_of_week"] / 7)
     prepared["month_sin"] = np.sin(2 * np.pi * prepared["month"] / 12)
     prepared["month_cos"] = np.cos(2 * np.pi * prepared["month"] / 12)
+    prepared["week_sin"] = np.sin(2 * np.pi * prepared["timestamp"].dt.isocalendar().week.astype(int) / 52)
+    prepared["week_cos"] = np.cos(2 * np.pi * prepared["timestamp"].dt.isocalendar().week.astype(int) / 52)
 
     history_indexed = full_history[["timestamp", TARGET_COLUMN, "time_idx"]].copy()
     history_indexed["timestamp"] = pd.to_datetime(history_indexed["timestamp"], errors="coerce")
@@ -224,6 +228,13 @@ def train_predict_prophet(
             frame[column] = pd.to_numeric(frame[column], errors="coerce").ffill()
         return frame.dropna(subset=[*regressors])
 
+    def prophet_future_frame(source: pd.DataFrame) -> pd.DataFrame:
+        frame = source[["timestamp", *regressors]].rename(columns={"timestamp": "ds"})
+        frame = frame.replace([np.inf, -np.inf], np.nan)
+        for column in regressors:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").ffill().bfill()
+        return frame.dropna(subset=regressors)
+
     def build_model() -> Prophet:
         model = Prophet(
             daily_seasonality=False,
@@ -258,7 +269,7 @@ def train_predict_prophet(
         final_train = prophet_frame(data).dropna(subset=["y"])
         final_model = build_model()
         final_model.fit(final_train[["ds", "y", *regressors]])
-        future_ready = prophet_frame(add_common_features(future_frame, data))
+        future_ready = prophet_future_frame(add_common_features(future_frame, data))
         future_forecast = final_model.predict(future_ready[["ds", *regressors]])
         future = future_forecast[["ds", "yhat"]].rename(
             columns={"ds": "timestamp", "yhat": "predicted_demand_mw"}
@@ -363,6 +374,173 @@ def train_predict_dnn_lstm(
     return june, future
 
 
+def train_predict_sarimax(
+    data: pd.DataFrame, future_frame: pd.DataFrame | None, fast: bool = False
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    with SARIMAX_CONFIG_PATH.open(encoding="utf-8") as file:
+        config = json.load(file)
+
+    order = tuple(config["order"])
+    seasonal_order = tuple(config["seasonal_order"])
+    exog_cols = config["exog_cols"]
+    log_transform = bool(config.get("log_transform", False))
+    train_window_hours = 24 * 120 if fast else 8760
+
+    prepared = data.replace([np.inf, -np.inf], np.nan).copy()
+    for column in exog_cols:
+        prepared[column] = pd.to_numeric(prepared[column], errors="coerce").ffill().bfill()
+
+    train = prepared[prepared["timestamp"] < FINAL_TEST_START].tail(train_window_hours).dropna(
+        subset=[TARGET_COLUMN, *exog_cols]
+    )
+    test = prepared[(prepared["timestamp"] >= FINAL_TEST_START) & (prepared["timestamp"] <= FINAL_TEST_END)].dropna(
+        subset=[TARGET_COLUMN, *exog_cols]
+    )
+    if train.empty or test.empty:
+        raise RuntimeError("SARIMAX train/test rows are missing required data")
+
+    y_train = np.log1p(train[TARGET_COLUMN]) if log_transform else train[TARGET_COLUMN]
+    model = SARIMAX(
+        y_train,
+        exog=train[exog_cols],
+        order=order,
+        seasonal_order=seasonal_order,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    )
+    result = model.fit(disp=False, maxiter=25 if fast else SARIMAX_MAXITER, method="lbfgs")
+    forecast = result.get_forecast(steps=len(test), exog=test[exog_cols]).predicted_mean
+    predicted = np.expm1(forecast) if log_transform else forecast
+    june = test[["timestamp", TARGET_COLUMN]].copy()
+    june["model"] = "SARIMAX"
+    june["predicted_demand_mw"] = np.asarray(predicted, dtype=float)
+
+    future = None
+    if future_frame is not None:
+        final_train = prepared.tail(train_window_hours).dropna(subset=[TARGET_COLUMN, *exog_cols])
+        future_ready = add_common_features(future_frame, data).replace([np.inf, -np.inf], np.nan)
+        for column in exog_cols:
+            future_ready[column] = pd.to_numeric(future_ready[column], errors="coerce").ffill().bfill()
+        future_ready = future_ready.dropna(subset=exog_cols).head(FORECAST_HORIZON)
+        y_final = np.log1p(final_train[TARGET_COLUMN]) if log_transform else final_train[TARGET_COLUMN]
+        final_model = SARIMAX(
+            y_final,
+            exog=final_train[exog_cols],
+            order=order,
+            seasonal_order=seasonal_order,
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        )
+        final_result = final_model.fit(disp=False, maxiter=25 if fast else SARIMAX_MAXITER, method="lbfgs")
+        final_forecast = final_result.get_forecast(steps=len(future_ready), exog=future_ready[exog_cols]).predicted_mean
+        final_predicted = np.expm1(final_forecast) if log_transform else final_forecast
+        future = future_ready[["timestamp"]].copy()
+        future["model"] = "SARIMAX"
+        future["predicted_demand_mw"] = np.asarray(final_predicted, dtype=float)
+    return june, future
+
+
+def forecast_xgboost(data: pd.DataFrame, future_frame: pd.DataFrame, fast: bool = False) -> pd.DataFrame:
+    with XGB_CONFIG_PATH.open(encoding="utf-8") as file:
+        config = json.load(file)
+    features = config["features"]
+    params = dict(config["params"])
+    if fast:
+        params["n_estimators"] = min(int(params.get("n_estimators", 100)), 50)
+    model = xgb.XGBRegressor(objective="reg:squarederror", random_state=SEED, n_jobs=-1, **params)
+    train = data.dropna(subset=[TARGET_COLUMN, *features]).copy()
+    model.fit(train[features], train[TARGET_COLUMN])
+    future_ready = add_common_features(future_frame, data).dropna(subset=features).copy()
+    future = future_ready[["timestamp"]].copy()
+    future["model"] = "XGBoost"
+    future["predicted_demand_mw"] = model.predict(future_ready[features])
+    return future
+
+
+def forecast_prophet(data: pd.DataFrame, future_frame: pd.DataFrame, fast: bool = False) -> pd.DataFrame:
+    from prophet import Prophet
+
+    with PROPHET_CONFIG_PATH.open(encoding="utf-8") as file:
+        config = json.load(file)
+    regressors = config["regressors"]
+    params = config["params"]
+
+    train = data[["timestamp", TARGET_COLUMN, *regressors]].rename(
+        columns={"timestamp": "ds", TARGET_COLUMN: "y"}
+    )
+    train = train.replace([np.inf, -np.inf], np.nan)
+    for column in regressors:
+        train[column] = pd.to_numeric(train[column], errors="coerce").ffill()
+    train = train.dropna(subset=["y", *regressors])
+
+    model = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=False,
+        yearly_seasonality=False,
+        seasonality_mode=params.get("seasonality_mode", "additive"),
+        changepoint_prior_scale=params.get("changepoint_prior_scale", 0.10),
+        seasonality_prior_scale=params.get("seasonality_prior_scale", 10.0),
+        holidays_prior_scale=params.get("holidays_prior_scale", 10.0),
+    )
+    model.add_seasonality("daily", period=1, fourier_order=params.get("daily_fourier_order", 16))
+    model.add_seasonality("weekly", period=7, fourier_order=params.get("weekly_fourier_order", 10))
+    model.add_seasonality("yearly", period=365.25, fourier_order=params.get("yearly_fourier_order", 12))
+    if config.get("use_prophet_holidays", False):
+        model.add_country_holidays(country_name="UK")
+    for regressor in regressors:
+        model.add_regressor(regressor)
+    model.fit(train[["ds", "y", *regressors]])
+
+    future_ready = add_common_features(future_frame, data)
+    future_ready = future_ready[["timestamp", *regressors]].rename(columns={"timestamp": "ds"})
+    future_ready = future_ready.replace([np.inf, -np.inf], np.nan)
+    for column in regressors:
+        future_ready[column] = pd.to_numeric(future_ready[column], errors="coerce").ffill().bfill()
+    future_ready = future_ready.dropna(subset=regressors)
+    forecast = model.predict(future_ready[["ds", *regressors]])
+    future = forecast[["ds", "yhat"]].rename(columns={"ds": "timestamp", "yhat": "predicted_demand_mw"})
+    future["model"] = "Prophet"
+    return future
+
+
+def forecast_dnn_lstm(data: pd.DataFrame, future_frame: pd.DataFrame, fast: bool = False) -> pd.DataFrame:
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    future_epochs = 2 if fast else DNN_FUTURE_MAX_EPOCHS
+    final_scaler = StandardScaler()
+    final_values = data[[TARGET_COLUMN]].values.astype(np.float32)
+    final_scaler.fit(final_values)
+    final_scaled = final_scaler.transform(final_values).astype(np.float32)
+
+    x_full, y_full = [], []
+    for start in range(len(final_scaled) - INPUT_LENGTH - FORECAST_HORIZON + 1):
+        x_full.append(final_scaled[start : start + INPUT_LENGTH])
+        y_full.append(final_scaled[start + INPUT_LENGTH : start + INPUT_LENGTH + FORECAST_HORIZON, 0])
+
+    model = BaselineLSTM().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    criterion = nn.MSELoss()
+    loader = DataLoader(LoadForecastDataset(np.array(x_full), np.array(y_full)), batch_size=BATCH_SIZE, shuffle=False)
+    for epoch in range(1, future_epochs + 1):
+        train_loss = train_one_epoch(model, loader, criterion, optimizer, device)
+        print(f"DNN/LSTM future epoch {epoch:03d} | train_loss={train_loss:.6f}", flush=True)
+
+    model.eval()
+    last_window = torch.tensor(final_scaled[-INPUT_LENGTH:].reshape(1, INPUT_LENGTH, 1), dtype=torch.float32).to(device)
+    with torch.no_grad():
+        future_scaled = model(last_window).cpu().numpy().reshape(-1, 1)
+    future_pred = final_scaler.inverse_transform(future_scaled).flatten()
+    future_times = pd.to_datetime(future_frame["timestamp"]).sort_values().head(FORECAST_HORIZON).to_numpy()
+    future = pd.DataFrame({"timestamp": future_times, "predicted_demand_mw": future_pred[: len(future_times)]})
+    future["model"] = "DNN_LSTM"
+    return future
+
+
 def score_prediction_frame(frame: pd.DataFrame) -> dict:
     return calculate_metrics(frame[TARGET_COLUMN], frame["predicted_demand_mw"])
 
@@ -411,6 +589,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use reduced training settings for a quick pipeline smoke test.",
     )
+    parser.add_argument(
+        "--reuse-existing",
+        action="store_true",
+        help="Reuse existing June prediction CSVs for requested models that are not run in this invocation.",
+    )
+    parser.add_argument(
+        "--forecast-only",
+        action="store_true",
+        help="Skip June validation training, reuse saved June predictions, and generate only the future forecast.",
+    )
     return parser.parse_args()
 
 
@@ -425,13 +613,15 @@ def main() -> None:
 
     cv_metrics = load_cv_metrics()
     cv_metrics.to_csv(OUTPUT_DIR / "cv_model_rankings.csv", index=False)
-    selected = cv_metrics.head(3).copy()
     if args.models:
         requested_models = {item.strip() for item in args.models.split(",") if item.strip()}
-        selected = selected[selected["model"].isin(requested_models)].copy()
+        candidate_metrics = cv_metrics[cv_metrics["model"].isin(requested_models)].copy()
         missing = requested_models - set(cv_metrics["model"])
         if missing:
             print("Requested models not present in CV metrics:", ", ".join(sorted(missing)))
+    else:
+        candidate_metrics = cv_metrics.copy()
+    selected = candidate_metrics.head(3).copy()
     if selected.empty:
         raise RuntimeError("No selected models are available to run.")
     selected_weights = inverse_error_weights(selected, "rmse")
@@ -442,10 +632,42 @@ def main() -> None:
         "XGBoost": train_predict_xgboost,
         "Prophet": train_predict_prophet,
         "DNN_LSTM": train_predict_dnn_lstm,
+        "SARIMAX": train_predict_sarimax,
+    }
+    future_runners = {
+        "XGBoost": forecast_xgboost,
+        "Prophet": forecast_prophet,
+        "DNN_LSTM": forecast_dnn_lstm,
     }
 
     errors = {}
-    for model in selected["model"]:
+    for model in candidate_metrics["model"]:
+        existing_path = OUTPUT_DIR / f"june_{model.lower()}_predictions.csv"
+        if (args.reuse_existing or args.forecast_only) and existing_path.exists():
+            existing = pd.read_csv(existing_path)
+            existing["timestamp"] = pd.to_datetime(existing["timestamp"], errors="coerce")
+            june_predictions[model] = existing.dropna(subset=["timestamp", TARGET_COLUMN, "predicted_demand_mw"])
+            print(f"Reused {model} -> {existing_path}", flush=True)
+            if args.forecast_only:
+                continue
+            if args.reuse_existing:
+                continue
+        if args.forecast_only:
+            if model not in future_runners:
+                errors[model] = "No forecast-only runner is implemented for this model."
+                continue
+            if forecast_features is None:
+                errors[model] = "forecast_feature_data.csv is missing."
+                continue
+            try:
+                print(f"Forecasting {model}...", flush=True)
+                future = future_runners[model](data, forecast_features, args.fast)
+                print(f"Finished forecast {model}.", flush=True)
+                future_predictions[model] = future
+                future.to_csv(OUTPUT_DIR / f"future_{model.lower()}_24h_predictions.csv", index=False)
+            except Exception as exc:
+                errors[model] = repr(exc)
+            continue
         runner = runners.get(model)
         if runner is None:
             errors[model] = "No final-stage training runner is implemented for this model."
@@ -462,15 +684,46 @@ def main() -> None:
         except Exception as exc:
             errors[model] = repr(exc)
 
+    if args.reuse_existing or args.forecast_only:
+        for model in candidate_metrics["model"]:
+            if model in june_predictions:
+                continue
+            existing_path = OUTPUT_DIR / f"june_{model.lower()}_predictions.csv"
+            if existing_path.exists():
+                existing = pd.read_csv(existing_path)
+                existing["timestamp"] = pd.to_datetime(existing["timestamp"], errors="coerce")
+                june_predictions[model] = existing.dropna(subset=["timestamp", TARGET_COLUMN, "predicted_demand_mw"])
+                errors.pop(model, None)
+
     june_metrics = []
     for model, frame in june_predictions.items():
         june_metrics.append({"model": model, **score_prediction_frame(frame)})
 
     ensemble_weights = {}
     if len(june_predictions) >= 2:
-        ensemble, ensemble_weights = weighted_ensemble(june_predictions, selected_weights, include_actual=True)
+        successful_metrics = candidate_metrics[candidate_metrics["model"].isin(june_predictions)].head(3).copy()
+        selected = successful_metrics
+        selected_weights = inverse_error_weights(selected, "rmse")
+        ensemble_inputs = {model: june_predictions[model] for model in selected["model"] if model in june_predictions}
+        ensemble, ensemble_weights = weighted_ensemble(ensemble_inputs, selected_weights, include_actual=True)
         ensemble.to_csv(OUTPUT_DIR / "june_ensemble_predictions.csv", index=False)
         june_metrics.append({"model": "Weighted_Ensemble", **score_prediction_frame(ensemble)})
+
+    if args.forecast_only and forecast_features is not None:
+        for model in selected["model"]:
+            if model in future_predictions:
+                continue
+            runner = future_runners.get(model)
+            if runner is None:
+                continue
+            try:
+                print(f"Forecasting {model}...", flush=True)
+                future = runner(data, forecast_features, args.fast)
+                print(f"Finished forecast {model}.", flush=True)
+                future_predictions[model] = future
+                future.to_csv(OUTPUT_DIR / f"future_{model.lower()}_24h_predictions.csv", index=False)
+            except Exception as exc:
+                errors[model] = repr(exc)
 
     if len(future_predictions) >= 2:
         future_ensemble, _ = weighted_ensemble(future_predictions, selected_weights, include_actual=False)
@@ -494,6 +747,7 @@ def main() -> None:
         "ensemble_weights_used": ensemble_weights,
         "dnn_june_max_epochs": DNN_JUNE_MAX_EPOCHS,
         "dnn_future_max_epochs": DNN_FUTURE_MAX_EPOCHS,
+        "sarimax_maxiter": SARIMAX_MAXITER,
         "unavailable_or_failed_models": errors,
     }
     (OUTPUT_DIR / "ensemble_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
