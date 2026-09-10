@@ -132,17 +132,15 @@ Render should run this as a Docker Web Service, not a Static Site.
 The included `render.yaml` config uses:
 
 - root `Dockerfile`
-- service branch `dev`
+- service branch `main`
+- free web service plan
 - public port `10000`
-- persistent disk mounted at `/app/storage`
-- `data/` mapped to `/app/storage/data`
-- `artifacts/` mapped to `/app/storage/artifacts`
-- automatic prediction refresh every 6 hours
-- startup refresh enabled for first deploys
+- `requirements-render.txt` for a smaller dashboard runtime install
+- automatic in-service prediction refresh disabled
 
 Deploy steps:
 
-1. Push this repo to GitHub and merge the deployment changes into `dev`.
+1. Push the deployment repository to GitHub.
 2. In Render, choose **New +** then **Blueprint**.
 3. Connect the GitHub repository.
 4. Select the `render.yaml` file.
@@ -170,7 +168,7 @@ Super-admin page:
 https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
 
-The first deploy uses `AUTO_PREDICTION_RUN_ON_START=true`, so the service starts a refresh automatically. The public page may show missing forecast files until that first run finishes.
+Free Render web services do not support persistent disks, so the service should not be the source of truth for generated CSVs. Use GitHub Actions or another external store to refresh forecast outputs, and let Render host/read the latest published outputs.
 
 ## NESO Lag Handling
 
