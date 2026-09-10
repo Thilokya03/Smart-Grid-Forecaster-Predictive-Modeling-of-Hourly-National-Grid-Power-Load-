@@ -136,6 +136,7 @@ The included `render.yaml` config uses:
 - free web service plan
 - public port `10000`
 - `requirements-render.txt` for a smaller dashboard runtime install
+- bundled latest `data/` and `artifacts/` snapshot for dashboard display
 - automatic in-service prediction refresh disabled
 
 Deploy steps:
@@ -168,7 +169,7 @@ Super-admin page:
 https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
 
-Free Render web services do not support persistent disks, so the service should not be the source of truth for generated CSVs. Use GitHub Actions or another external store to refresh forecast outputs, and let Render host/read the latest published outputs.
+Free Render web services do not support persistent disks, so the service should not be the long-term source of truth for generated CSVs. This deployment bundles the latest committed data/artifact snapshot so the dashboard has content after each deploy. Use GitHub Actions or another external store to refresh those files automatically and redeploy Render.
 
 ## NESO Lag Handling
 
