@@ -7,8 +7,12 @@ STORAGE_DIR="${STORAGE_DIR:-$APP_DIR/storage}"
 if [ "${RENDER:-}" = "true" ]; then
   mkdir -p "$STORAGE_DIR/data" "$STORAGE_DIR/artifacts" /input/demand
 
-  for name in data artifacts; do
+  for name in data results; do
     target="$STORAGE_DIR/$name"
+    # Preserve model files already stored on the Render persistent disk.
+    if [ "$name" = "results" ]; then
+      target="$STORAGE_DIR/artifacts"
+    fi
     link="$APP_DIR/$name"
 
     mkdir -p "$target"

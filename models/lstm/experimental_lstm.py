@@ -27,7 +27,7 @@ from torch.utils.data import (
 # PATHS
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 MASTER_PATH = (
     PROJECT_ROOT
@@ -38,7 +38,7 @@ MASTER_PATH = (
 
 OUTPUT_DIR = (
     PROJECT_ROOT
-    / "artifacts"
+    / "results"
     / "dnn"
     / "dnn_outputs"
 )

@@ -27,16 +27,16 @@ The DNN/LSTM notebook result is available, but it is not fold-matched CV yet.
 Available:
 
 ```text
-artifacts/xgboost/validation_predictions.csv
-artifacts/xgboost/validation_metrics.csv
-artifacts/xgboost/validation_metrics_by_fold.csv
-artifacts/xgboost/xgboost_outputs/best_xgb_config.json
+results/xgboost/validation_predictions.csv
+results/xgboost/validation_metrics.csv
+results/xgboost/validation_metrics_by_fold.csv
+results/xgboost/xgboost_outputs/best_xgb_config.json
 ```
 
 Missing before production serving:
 
 ```text
-artifacts/xgboost/xgboost_model.json
+results/xgboost/xgboost_model.json
 ```
 
 ### Prophet Tuned
@@ -44,17 +44,17 @@ artifacts/xgboost/xgboost_model.json
 Available:
 
 ```text
-artifacts/prophet_tuned/prophet_outputs/best_prophet_config.json
-artifacts/prophet_tuned/prophet_outputs/prophet_tuning_summary.csv
-artifacts/prophet_tuned/prophet_outputs/prophet_tuning_folds.csv
+results/prophet_tuned/prophet_outputs/best_prophet_config.json
+results/prophet_tuned/prophet_outputs/prophet_tuning_summary.csv
+results/prophet_tuned/prophet_outputs/prophet_tuning_folds.csv
 ```
 
 Missing for the admin curve visualizer:
 
 ```text
-artifacts/prophet_tuned/validation_predictions.csv
-artifacts/prophet_tuned/validation_metrics.csv
-artifacts/prophet_tuned/validation_metrics_by_fold.csv
+results/prophet_tuned/validation_predictions.csv
+results/prophet_tuned/validation_metrics.csv
+results/prophet_tuned/validation_metrics_by_fold.csv
 ```
 
 ### SARIMAX
@@ -62,10 +62,10 @@ artifacts/prophet_tuned/validation_metrics_by_fold.csv
 Available:
 
 ```text
-artifacts/sarimax/sarimax_outputs/sarimax_cv_summary.json
-artifacts/sarimax/sarimax_outputs/sarimax_cv_folds.csv
-artifacts/sarimax/sarimax_outputs/sarimax_cv_predictions.csv
-artifacts/sarimax/sarimax_outputs/sarimax_order.json
+results/sarimax/sarimax_outputs/sarimax_cv_summary.json
+results/sarimax/sarimax_outputs/sarimax_cv_folds.csv
+results/sarimax/sarimax_outputs/sarimax_cv_predictions.csv
+results/sarimax/sarimax_outputs/sarimax_order.json
 ```
 
 ### DNN/LSTM
@@ -73,18 +73,18 @@ artifacts/sarimax/sarimax_outputs/sarimax_order.json
 Available:
 
 ```text
-artifacts/DNN/DNN_Forecasting.ipynb
-artifacts/DNN/EDA.ipynb
-artifacts/DNN/Data_Cleaning.ipynb
+results/DNN/DNN_Forecasting.ipynb
+results/DNN/EDA.ipynb
+results/DNN/Data_Cleaning.ipynb
 ```
 
 Missing for dashboard curves and serving:
 
 ```text
-artifacts/dnn/dnn_outputs/dnn_predictions.csv
-artifacts/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
-artifacts/dnn/dnn_outputs/dnn_metrics.json
-artifacts/dnn/dnn_outputs/dnn_model.pt
+results/dnn/dnn_outputs/dnn_predictions.csv
+results/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
+results/dnn/dnn_outputs/dnn_metrics.json
+results/dnn/dnn_outputs/dnn_model.pt
 ```
 
 ## What Needs To Change

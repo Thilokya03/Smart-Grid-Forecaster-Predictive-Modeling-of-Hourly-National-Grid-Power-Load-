@@ -6,11 +6,10 @@ This project builds a UK hourly demand and weather dataset, trains/serves foreca
 
 - `weather_pipeline/` - weather download, rolling update, and bridge maintenance scripts
 - `uk_training_data_prep/` - NESO demand, holiday/economic sync, and master dataset build scripts
-- `ml_training/` - model training, fast gap-fill, nowcast bridge, and forecast scripts
-- `models/` - newer model experiments and reusable model code, including LSTM and TimesFM
+- `models/` - all model implementations, training, gap-fill and forecast workflows
 - `ui/` - Python dashboard server and static frontend assets
 - `data/` - generated local datasets
-- `artifacts/` - generated model files, validation outputs, and forecasts
+- `results/` - generated model files, validation outputs, and forecasts
 
 ## Normal Update Flow
 
@@ -24,7 +23,7 @@ python uk_training_data_prep\build_weather_feature_data.py
 python uk_training_data_prep\build_hourly_load_data.py
 python uk_training_data_prep\build_master_training_data.py
 python uk_training_data_prep\build_forecast_feature_data.py
-python ml_training\fast_gap_fill_and_forecast.py
+python -m models.prophet.fast_gap_fill_and_forecast
 ```
 
 The dashboard super-admin button `Refresh Latest Predictions Now` runs this same flow.
@@ -33,13 +32,13 @@ The dashboard super-admin button `Refresh Latest Predictions Now` runs this same
 
 The fast forecast path backfills from `2026-07-01` to the current UK hour, bridges any NESO demand lag with nowcast values, and writes:
 
-- `artifacts/fast_predictions/gap_fill_predictions.csv`
-- `artifacts/fast_predictions/fast_forecast_24h.csv`
-- `artifacts/fast_predictions/fast_forecast_48h.csv`
-- `artifacts/fast_predictions/fast_forecast_72h.csv`
-- `artifacts/fast_predictions/fast_forecast_168h.csv`
-- `artifacts/fast_predictions/detailed_weighted_24h_forecast.csv`
-- `artifacts/fast_predictions/fast_prediction_summary.json`
+- `results/fast_predictions/gap_fill_predictions.csv`
+- `results/fast_predictions/fast_forecast_24h.csv`
+- `results/fast_predictions/fast_forecast_48h.csv`
+- `results/fast_predictions/fast_forecast_72h.csv`
+- `results/fast_predictions/fast_forecast_168h.csv`
+- `results/fast_predictions/detailed_weighted_24h_forecast.csv`
+- `results/fast_predictions/fast_prediction_summary.json`
 
 ## Local Dashboard
 
@@ -116,7 +115,7 @@ http://127.0.0.1:8765
 The compose file mounts:
 
 - `./data` to `/app/data`
-- `./artifacts` to `/app/artifacts`
+- `./results` to `/app/results`
 - your Windows `Downloads` folder to `/input/demand`
 
 Stop:
@@ -136,7 +135,7 @@ The included `render.yaml` config uses:
 - public port `10000`
 - persistent disk mounted at `/app/storage`
 - `data/` mapped to `/app/storage/data`
-- `artifacts/` mapped to `/app/storage/artifacts`
+- `results/` mapped to `/app/storage/artifacts`
 - automatic prediction refresh every 6 hours
 - startup refresh enabled for first deploys
 

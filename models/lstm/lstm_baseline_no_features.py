@@ -1,23 +1,21 @@
 """
-FINAL LSTM WITH FEATURES
-========================
+FINAL BASELINE LSTM
+===================
 Electricity-load forecasting with PyTorch.
 
 Input:
-    Previous 168 hours of:
-        - electricity load
-        - selected numeric/exogenous features
-        - cyclical calendar/time features
+    Previous 168 hourly load values (7 days)
 
 Output:
     Next 24 hourly load values
 
+This model DOES NOT use weather or other extra features.
+
 Main protections:
 - chronological Train / Validation / Test split
-- all scalers fitted on TRAINING data only
+- scaler fitted on TRAINING data only
 - windows with missing hourly timestamps are skipped
-- direct 168 hours -> 24 hours forecast
-- same main LSTM architecture as the baseline model
+- 168 hours -> 24 hours direct multi-step forecast
 """
 
 from __future__ import annotations
@@ -40,7 +38,7 @@ from torch.utils.data import DataLoader, Dataset
 # 1. SETTINGS
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = (
     PROJECT_ROOT
     / "data"
@@ -49,25 +47,12 @@ DATA_PATH = (
 )
 
 # Leave as None for automatic detection.
+# If detection is wrong, write the exact column names.
 DATETIME_COL = None
 TARGET_COL = None
 
-# RECOMMENDED FOR FINAL EXPERIMENT:
-# Replace None with the exact feature names you want.
-#
-# Example:
-# FEATURE_COLS = [
-#     "temperature",
-#     "humidity",
-#     "wind_speed",
-# ]
-#
-# If FEATURE_COLS = None, this script automatically uses suitable
-# numeric columns, while blocking obvious future/target columns.
-FEATURE_COLS = None
-
-LOOKBACK = 168
-HORIZON = 24
+LOOKBACK = 168        # previous 7 days
+HORIZON = 24          # next 24 hours
 
 TRAIN_RATIO = 0.70
 VAL_RATIO = 0.15
@@ -86,7 +71,7 @@ GRAD_CLIP = 1.0
 SEED = 42
 NUM_WORKERS = 0
 
-OUTPUT_DIR = Path("feature_lstm_outputs")
+OUTPUT_DIR = PROJECT_ROOT / "results" / "baseline_lstm_outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -145,7 +130,6 @@ def detect_datetime_col(df, manual_col=None):
 
     for candidate in preferred:
         key = normalize_name(candidate)
-
         if key in normalized:
             return normalized[key]
 
@@ -223,137 +207,7 @@ def detect_target_col(df, manual_col=None):
 
 
 # ============================================================
-# 4. TIME / CALENDAR FEATURES
-# ============================================================
-
-def add_calendar_features(df, datetime_col):
-    dt = df[datetime_col]
-
-    # Daily cycle
-    df["hour_sin"] = np.sin(
-        2 * np.pi * dt.dt.hour / 24.0
-    )
-    df["hour_cos"] = np.cos(
-        2 * np.pi * dt.dt.hour / 24.0
-    )
-
-    # Weekly cycle
-    df["dow_sin"] = np.sin(
-        2 * np.pi * dt.dt.dayofweek / 7.0
-    )
-    df["dow_cos"] = np.cos(
-        2 * np.pi * dt.dt.dayofweek / 7.0
-    )
-
-    # Annual/monthly cycle
-    month_zero = dt.dt.month - 1
-
-    df["month_sin"] = np.sin(
-        2 * np.pi * month_zero / 12.0
-    )
-    df["month_cos"] = np.cos(
-        2 * np.pi * month_zero / 12.0
-    )
-
-    # Weekend flag
-    df["is_weekend"] = (
-        dt.dt.dayofweek >= 5
-    ).astype(np.float32)
-
-    return [
-        "hour_sin",
-        "hour_cos",
-        "dow_sin",
-        "dow_cos",
-        "month_sin",
-        "month_cos",
-        "is_weekend",
-    ]
-
-
-# ============================================================
-# 5. FEATURE SELECTION
-# ============================================================
-
-def choose_feature_columns(
-    df,
-    datetime_col,
-    target_col,
-    calendar_cols,
-    manual_features=None,
-):
-    """
-    Return extra features only.
-    Target/load will be added separately.
-    """
-
-    if manual_features is not None:
-        missing = [
-            col
-            for col in manual_features
-            if col not in df.columns
-        ]
-
-        if missing:
-            raise ValueError(
-                f"These FEATURE_COLS do not exist: {missing}"
-            )
-
-        selected = [
-            col
-            for col in manual_features
-            if col not in (datetime_col, target_col)
-        ]
-
-    else:
-        # Obvious names that may leak future target information.
-        blocked_words = (
-            "future",
-            "next",
-            "ahead",
-            "lead",
-            "label",
-            "prediction",
-            "predicted",
-            "forecast",
-            "target",
-        )
-
-        selected = []
-
-        for col in df.columns:
-            if col in (datetime_col, target_col):
-                continue
-
-            if col in calendar_cols:
-                continue
-
-            # Automatic mode only uses numeric/bool columns.
-            if not (
-                pd.api.types.is_numeric_dtype(df[col])
-                or pd.api.types.is_bool_dtype(df[col])
-            ):
-                continue
-
-            name = normalize_name(col)
-
-            if any(word in name for word in blocked_words):
-                continue
-
-            selected.append(col)
-
-    # Always add safe calendar features.
-    selected = list(
-        dict.fromkeys(
-            selected + calendar_cols
-        )
-    )
-
-    return selected
-
-
-# ============================================================
-# 6. LOAD AND PREPARE DATA
+# 4. LOAD AND CLEAN DATA
 # ============================================================
 
 def prepare_dataframe():
@@ -372,127 +226,40 @@ def prepare_dataframe():
     for col in df.columns:
         print("  -", col)
 
-    datetime_col = detect_datetime_col(
-        df,
-        DATETIME_COL,
-    )
-
-    target_col = detect_target_col(
-        df,
-        TARGET_COL,
-    )
+    datetime_col = detect_datetime_col(df, DATETIME_COL)
+    target_col = detect_target_col(df, TARGET_COL)
 
     print("\nDetected datetime column:", datetime_col)
     print("Detected target column:  ", target_col)
 
-    df[datetime_col] = pd.to_datetime(
-        df[datetime_col],
-        errors="coerce",
-    )
+    df[datetime_col] = pd.to_datetime(df[datetime_col], errors="coerce")
+    df[target_col] = pd.to_numeric(df[target_col], errors="coerce")
 
-    df[target_col] = pd.to_numeric(
-        df[target_col],
-        errors="coerce",
-    )
+    # Remove rows where timestamp or target is missing.
+    # We DO NOT invent missing load observations.
+    df = df.dropna(subset=[datetime_col, target_col]).copy()
 
-    # Remove rows with invalid time or missing load.
-    # Missing load values are NOT invented.
-    df = df.dropna(
-        subset=[datetime_col, target_col]
-    ).copy()
-
+    # Sort correctly in time.
     df = (
         df.sort_values(datetime_col)
-        .drop_duplicates(
-            subset=[datetime_col],
-            keep="last",
-        )
+        .drop_duplicates(subset=[datetime_col], keep="last")
         .reset_index(drop=True)
     )
 
     n = len(df)
 
     if n < LOOKBACK + HORIZON + 10:
-        raise ValueError(
-            "Not enough usable rows for this experiment."
-        )
+        raise ValueError("Not enough usable rows for this experiment.")
 
     if not math.isclose(
         TRAIN_RATIO + VAL_RATIO + TEST_RATIO,
         1.0,
         abs_tol=1e-8,
     ):
-        raise ValueError(
-            "Train + validation + test ratios must equal 1.0."
-        )
+        raise ValueError("Train + validation + test ratios must equal 1.0.")
 
     train_cut = int(n * TRAIN_RATIO)
-    val_cut = int(
-        n * (TRAIN_RATIO + VAL_RATIO)
-    )
-
-    # Create time features.
-    calendar_cols = add_calendar_features(
-        df,
-        datetime_col,
-    )
-
-    # Select additional features.
-    feature_cols = choose_feature_columns(
-        df,
-        datetime_col,
-        target_col,
-        calendar_cols,
-        FEATURE_COLS,
-    )
-
-    # Convert selected extra features to numeric.
-    for col in feature_cols:
-        if pd.api.types.is_bool_dtype(df[col]):
-            df[col] = df[col].astype(np.float32)
-        else:
-            df[col] = pd.to_numeric(
-                df[col],
-                errors="coerce",
-            )
-
-    # Fill exogenous-feature gaps using PAST values only.
-    # Remaining beginning NaNs use TRAINING median only.
-    for col in feature_cols:
-        df[col] = (
-            df[col]
-            .replace([np.inf, -np.inf], np.nan)
-            .ffill()
-        )
-
-        train_median = df.loc[
-            : train_cut - 1,
-            col,
-        ].median()
-
-        if not pd.isna(train_median):
-            df[col] = df[col].fillna(
-                train_median
-            )
-
-    # Remove columns that still contain NaN in training.
-    usable_features = []
-
-    for col in feature_cols:
-        training_values = df.loc[
-            : train_cut - 1,
-            col,
-        ]
-
-        if training_values.notna().all():
-            usable_features.append(col)
-        else:
-            print(
-                "Dropping unusable feature:",
-                col,
-            )
-
-    feature_cols = usable_features
+    val_cut = int(n * (TRAIN_RATIO + VAL_RATIO))
 
     print("\nClean dataset:")
     print("Rows:", n)
@@ -504,30 +271,11 @@ def prepare_dataframe():
     print(f"Validation: rows {train_cut} to {val_cut - 1}")
     print(f"Test:       rows {val_cut} to {n - 1}")
 
-    print("\nExtra features:")
-    for col in feature_cols:
-        print("  -", col)
-
-    input_cols = [target_col] + feature_cols
-
-    print(
-        "\nTotal LSTM input channels:",
-        len(input_cols),
-    )
-
-    return (
-        df,
-        datetime_col,
-        target_col,
-        feature_cols,
-        input_cols,
-        train_cut,
-        val_cut,
-    )
+    return df, datetime_col, target_col, train_cut, val_cut
 
 
 # ============================================================
-# 7. BUILD VALID 168 -> 24 WINDOWS
+# 5. BUILD VALID 168 -> 24 WINDOWS
 # ============================================================
 
 def build_window_indices(times, train_cut, val_cut, n_rows):
@@ -579,60 +327,38 @@ def build_window_indices(times, train_cut, val_cut, n_rows):
 
     return starts
 # ============================================================
-# 8. PYTORCH DATASET
+# 6. PYTORCH DATASET
 # ============================================================
 
-class FeatureWindowDataset(Dataset):
-    def __init__(
-        self,
-        x_scaled,
-        y_scaled,
-        starts,
-    ):
-        self.x = x_scaled.astype(
-            np.float32,
-            copy=False,
-        )
-
-        self.y = y_scaled.astype(
-            np.float32,
-            copy=False,
-        )
-
+class LoadWindowDataset(Dataset):
+    def __init__(self, load_scaled, starts):
+        self.x = load_scaled.astype(np.float32, copy=False)
+        self.y = load_scaled.astype(np.float32, copy=False)
         self.starts = starts
 
     def __len__(self):
         return len(self.starts)
 
     def __getitem__(self, idx):
-        start = int(
-            self.starts[idx]
-        )
+        start = int(self.starts[idx])
 
-        x = self.x[
-            start : start + LOOKBACK
-        ]
+        x = self.x[start : start + LOOKBACK]
+        x = x.reshape(LOOKBACK, 1)
 
         y_start = start + LOOKBACK
+        y = self.y[y_start : y_start + HORIZON]
 
-        y = self.y[
-            y_start : y_start + HORIZON
-        ]
-
-        return (
-            torch.from_numpy(x),
-            torch.from_numpy(y),
-        )
+        return torch.from_numpy(x), torch.from_numpy(y)
 
 
 # ============================================================
-# 9. FEATURE LSTM MODEL
+# 7. BASELINE LSTM MODEL
 # ============================================================
 
-class FeatureLSTM(nn.Module):
+class BaselineLSTM(nn.Module):
     """
     Input:
-        [batch, 168, number_of_features]
+        [batch, 168, 1]
 
     Output:
         [batch, 24]
@@ -640,7 +366,7 @@ class FeatureLSTM(nn.Module):
 
     def __init__(
         self,
-        input_size,
+        input_size=1,
         hidden_size=64,
         num_layers=2,
         dropout=0.2,
@@ -648,11 +374,7 @@ class FeatureLSTM(nn.Module):
     ):
         super().__init__()
 
-        actual_dropout = (
-            dropout
-            if num_layers > 1
-            else 0.0
-        )
+        actual_dropout = dropout if num_layers > 1 else 0.0
 
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -662,38 +384,30 @@ class FeatureLSTM(nn.Module):
             dropout=actual_dropout,
         )
 
-        self.layer_norm = nn.LayerNorm(
-            hidden_size
-        )
+        self.layer_norm = nn.LayerNorm(hidden_size)
 
         self.output_head = nn.Sequential(
-            nn.Linear(
-                hidden_size,
-                hidden_size,
-            ),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(
-                hidden_size,
-                horizon,
-            ),
+            nn.Linear(hidden_size, horizon),
         )
 
     def forward(self, x):
         lstm_output, _ = self.lstm(x)
 
+        # Last hidden representation of the 168-hour input.
         last_output = lstm_output[:, -1, :]
         last_output = self.layer_norm(last_output)
 
-        prediction = self.output_head(
-            last_output
-        )
+        # Directly predict all next 24 hours.
+        prediction = self.output_head(last_output)
 
         return prediction
 
 
 # ============================================================
-# 10. TRAINING
+# 8. TRAINING
 # ============================================================
 
 def run_epoch(model, loader, criterion, device, optimizer=None):
@@ -708,15 +422,10 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
         y = y.to(device)
 
         if training:
-            optimizer.zero_grad(
-                set_to_none=True
-            )
+            optimizer.zero_grad(set_to_none=True)
 
         prediction = model(x)
-        loss = criterion(
-            prediction,
-            y,
-        )
+        loss = criterion(prediction, y)
 
         if training:
             loss.backward()
@@ -730,10 +439,7 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
 
         batch_size = x.size(0)
 
-        total_loss += (
-            loss.item() * batch_size
-        )
-
+        total_loss += loss.item() * batch_size
         total_samples += batch_size
 
     return total_loss / total_samples
@@ -751,16 +457,13 @@ def train_model(model, train_loader, val_loader, device):
     model = model.to(device)
 
     best_val_loss = float("inf")
-    best_state = copy.deepcopy(
-        model.state_dict()
-    )
-
+    best_state = copy.deepcopy(model.state_dict())
     patience_counter = 0
 
     train_history = []
     val_history = []
 
-    print("\n========== TRAINING FEATURE LSTM ==========")
+    print("\n========== TRAINING BASELINE LSTM ==========")
 
     for epoch in range(1, MAX_EPOCHS + 1):
         train_loss = run_epoch(
@@ -779,13 +482,8 @@ def train_model(model, train_loader, val_loader, device):
                 device,
             )
 
-        train_history.append(
-            train_loss
-        )
-
-        val_history.append(
-            val_loss
-        )
+        train_history.append(train_loss)
+        val_history.append(val_loss)
 
         print(
             f"Epoch {epoch:03d}/{MAX_EPOCHS} | "
@@ -795,9 +493,7 @@ def train_model(model, train_loader, val_loader, device):
 
         if val_loss < best_val_loss - 1e-6:
             best_val_loss = val_loss
-            best_state = copy.deepcopy(
-                model.state_dict()
-            )
+            best_state = copy.deepcopy(model.state_dict())
             patience_counter = 0
 
         else:
@@ -807,19 +503,13 @@ def train_model(model, train_loader, val_loader, device):
                 print("\nEarly stopping.")
                 break
 
-    model.load_state_dict(
-        best_state
-    )
+    model.load_state_dict(best_state)
 
-    return (
-        model,
-        train_history,
-        val_history,
-    )
+    return model, train_history, val_history
 
 
 # ============================================================
-# 11. PREDICTION AND METRICS
+# 9. PREDICTION AND METRICS
 # ============================================================
 
 def predict(model, loader, device):
@@ -834,44 +524,29 @@ def predict(model, loader, device):
 
             prediction = model(x)
 
-            predictions.append(
-                prediction.cpu().numpy()
-            )
-
-            actuals.append(
-                y.numpy()
-            )
+            predictions.append(prediction.cpu().numpy())
+            actuals.append(y.numpy())
 
     return (
-        np.concatenate(
-            predictions,
-            axis=0,
-        ),
-        np.concatenate(
-            actuals,
-            axis=0,
-        ),
+        np.concatenate(predictions, axis=0),
+        np.concatenate(actuals, axis=0),
     )
 
 
-def inverse_target(array_2d, target_scaler):
+def inverse_scale(array_2d, scaler):
     original_shape = array_2d.shape
 
-    restored = target_scaler.inverse_transform(
+    restored = scaler.inverse_transform(
         array_2d.reshape(-1, 1)
     )
 
-    return restored.reshape(
-        original_shape
-    )
+    return restored.reshape(original_shape)
 
 
 def calculate_metrics(y_true, y_pred):
     error = y_pred - y_true
 
-    mae = np.mean(
-        np.abs(error)
-    )
+    mae = np.mean(np.abs(error))
 
     rmse = np.sqrt(
         np.mean(error ** 2)
@@ -881,12 +556,8 @@ def calculate_metrics(y_true, y_pred):
 
     if mask.any():
         mape = np.mean(
-            np.abs(
-                error[mask]
-                / y_true[mask]
-            )
+            np.abs(error[mask] / y_true[mask])
         ) * 100.0
-
     else:
         mape = np.nan
 
@@ -898,7 +569,7 @@ def calculate_metrics(y_true, y_pred):
 
 
 # ============================================================
-# 12. SIMPLE SEASONAL BASELINES
+# 10. SIMPLE SEASONAL BASELINES
 # ============================================================
 
 def create_naive_forecasts(original_load, starts):
@@ -908,27 +579,24 @@ def create_naive_forecasts(original_load, starts):
 
     for start in starts:
         start = int(start)
-
         target_start = start + LOOKBACK
         target_end = target_start + HORIZON
 
         actual.append(
-            original_load[
-                target_start:target_end
-            ]
+            original_load[target_start:target_end]
         )
 
+        # Tomorrow = latest previous 24 hours
         daily_naive.append(
             original_load[
-                target_start - HORIZON
-                : target_start
+                target_start - HORIZON : target_start
             ]
         )
 
+        # Tomorrow = same 24-hour block from 7 days before
         weekly_naive.append(
             original_load[
-                start
-                : start + HORIZON
+                start : start + HORIZON
             ]
         )
 
@@ -940,30 +608,23 @@ def create_naive_forecasts(original_load, starts):
 
 
 # ============================================================
-# 13. SAVE PLOTS AND RESULTS
+# 11. SAVE PLOTS AND RESULTS
 # ============================================================
 
 def save_loss_plot(train_history, val_history):
     plt.figure(figsize=(8, 5))
 
-    plt.plot(
-        train_history,
-        label="Training",
-    )
-
-    plt.plot(
-        val_history,
-        label="Validation",
-    )
+    plt.plot(train_history, label="Training")
+    plt.plot(val_history, label="Validation")
 
     plt.xlabel("Epoch")
     plt.ylabel("MSE loss")
-    plt.title("Feature LSTM Training")
+    plt.title("Baseline LSTM Training")
     plt.legend()
     plt.tight_layout()
 
     plt.savefig(
-        OUTPUT_DIR / "feature_lstm_loss.png",
+        OUTPUT_DIR / "baseline_lstm_loss.png",
         dpi=150,
     )
 
@@ -971,10 +632,7 @@ def save_loss_plot(train_history, val_history):
 
 
 def save_forecast_plot(actual, predicted):
-    hours = np.arange(
-        1,
-        HORIZON + 1,
-    )
+    hours = np.arange(1, HORIZON + 1)
 
     plt.figure(figsize=(10, 5))
 
@@ -989,19 +647,17 @@ def save_forecast_plot(actual, predicted):
         hours,
         predicted[0],
         marker="o",
-        label="Feature LSTM",
+        label="Baseline LSTM",
     )
 
     plt.xlabel("Forecast hour")
     plt.ylabel("Load")
-    plt.title(
-        "Example 24-hour Feature LSTM Forecast"
-    )
+    plt.title("Example 24-hour Baseline LSTM Forecast")
     plt.legend()
     plt.tight_layout()
 
     plt.savefig(
-        OUTPUT_DIR / "feature_test_forecast.png",
+        OUTPUT_DIR / "baseline_test_forecast.png",
         dpi=150,
     )
 
@@ -1019,32 +675,22 @@ def save_predictions(times, starts, actual, predicted):
 
             rows.append(
                 {
-                    "forecast_origin": times.iloc[
-                        forecast_start
-                    ],
-                    "forecast_time": times.iloc[
-                        row_index
-                    ],
+                    "forecast_origin": times.iloc[forecast_start],
+                    "forecast_time": times.iloc[row_index],
                     "horizon_hour": h + 1,
-                    "actual": actual[
-                        sample_index,
-                        h,
-                    ],
-                    "prediction": predicted[
-                        sample_index,
-                        h,
-                    ],
+                    "actual": actual[sample_index, h],
+                    "prediction": predicted[sample_index, h],
                 }
             )
 
     pd.DataFrame(rows).to_csv(
-        OUTPUT_DIR / "feature_test_predictions.csv",
+        OUTPUT_DIR / "baseline_test_predictions.csv",
         index=False,
     )
 
 
 # ============================================================
-# 14. MAIN
+# 12. MAIN
 # ============================================================
 
 def main():
@@ -1057,48 +703,29 @@ def main():
         df,
         datetime_col,
         target_col,
-        feature_cols,
-        input_cols,
         train_cut,
         val_cut,
     ) = prepare_dataframe()
 
     # --------------------------------------------------------
-    # TARGET SCALER: TRAINING DATA ONLY
+    # SCALE LOAD USING TRAINING DATA ONLY
     # --------------------------------------------------------
-    target_scaler = StandardScaler()
+    scaler = StandardScaler()
 
-    target_scaler.fit(
-        df[[target_col]].iloc[
-            :train_cut
-        ]
+    scaler.fit(
+        df[[target_col]].iloc[:train_cut]
     )
 
     original_load = df[target_col].to_numpy(
         dtype=np.float32
     )
 
-    y_scaled = target_scaler.transform(
+    load_scaled = scaler.transform(
         df[[target_col]]
     ).astype(np.float32).reshape(-1)
 
     # --------------------------------------------------------
-    # FEATURE SCALER: TRAINING DATA ONLY
-    # --------------------------------------------------------
-    feature_scaler = StandardScaler()
-
-    feature_scaler.fit(
-        df[input_cols].iloc[
-            :train_cut
-        ]
-    )
-
-    x_scaled = feature_scaler.transform(
-        df[input_cols]
-    ).astype(np.float32)
-
-    # --------------------------------------------------------
-    # VALID CONTINUOUS WINDOWS
+    # CREATE VALID WINDOWS
     # --------------------------------------------------------
     starts = build_window_indices(
         df[datetime_col],
@@ -1122,21 +749,18 @@ def main():
     # --------------------------------------------------------
     # DATASETS
     # --------------------------------------------------------
-    train_dataset = FeatureWindowDataset(
-        x_scaled,
-        y_scaled,
+    train_dataset = LoadWindowDataset(
+        load_scaled,
         starts["train"],
     )
 
-    val_dataset = FeatureWindowDataset(
-        x_scaled,
-        y_scaled,
+    val_dataset = LoadWindowDataset(
+        load_scaled,
         starts["val"],
     )
 
-    test_dataset = FeatureWindowDataset(
-        x_scaled,
-        y_scaled,
+    test_dataset = LoadWindowDataset(
+        load_scaled,
         starts["test"],
     )
 
@@ -1167,8 +791,8 @@ def main():
     # --------------------------------------------------------
     # CREATE MODEL
     # --------------------------------------------------------
-    model = FeatureLSTM(
-        input_size=x_scaled.shape[1],
+    model = BaselineLSTM(
+        input_size=1,
         hidden_size=HIDDEN_SIZE,
         num_layers=NUM_LAYERS,
         dropout=DROPOUT,
@@ -1178,19 +802,10 @@ def main():
     print("\nModel:")
     print(model)
 
-    print(
-        "\nInput shape per sample:",
-        f"[{LOOKBACK}, {x_scaled.shape[1]}]",
-    )
-
     # --------------------------------------------------------
     # TRAIN
     # --------------------------------------------------------
-    (
-        model,
-        train_history,
-        val_history,
-    ) = train_model(
+    model, train_history, val_history = train_model(
         model,
         train_loader,
         val_loader,
@@ -1206,29 +821,29 @@ def main():
         device,
     )
 
-    prediction = inverse_target(
+    prediction = inverse_scale(
         pred_scaled,
-        target_scaler,
+        scaler,
     )
 
-    actual = inverse_target(
+    actual = inverse_scale(
         actual_scaled,
-        target_scaler,
+        scaler,
     )
 
     # --------------------------------------------------------
     # LSTM METRICS
     # --------------------------------------------------------
-    feature_metrics = calculate_metrics(
+    lstm_metrics = calculate_metrics(
         actual,
         prediction,
     )
 
     print("\n========== TEST RESULTS ==========")
-    print("\nFeature LSTM")
-    print(f"MAE:  {feature_metrics['MAE']:.3f}")
-    print(f"RMSE: {feature_metrics['RMSE']:.3f}")
-    print(f"MAPE: {feature_metrics['MAPE_%']:.3f}%")
+    print("\nBaseline LSTM")
+    print(f"MAE:  {lstm_metrics['MAE']:.3f}")
+    print(f"RMSE: {lstm_metrics['RMSE']:.3f}")
+    print(f"MAPE: {lstm_metrics['MAPE_%']:.3f}%")
 
     # --------------------------------------------------------
     # NAIVE COMPARISON
@@ -1263,16 +878,14 @@ def main():
                 **weekly_metrics,
             },
             {
-                "model": "Feature LSTM",
-                **feature_metrics,
+                "model": "Baseline LSTM",
+                **lstm_metrics,
             },
         ]
     ).sort_values("RMSE")
 
     print("\nComparison:")
-    print(
-        metrics_df.to_string(index=False)
-    )
+    print(metrics_df.to_string(index=False))
 
     # --------------------------------------------------------
     # SAVE EVERYTHING
@@ -1280,35 +893,22 @@ def main():
     torch.save(
         {
             "model_state_dict": model.state_dict(),
-            "model_name": "feature_lstm",
+            "model_name": "baseline_lstm",
             "datetime_col": datetime_col,
             "target_col": target_col,
-            "feature_cols": feature_cols,
-            "input_cols": input_cols,
             "lookback": LOOKBACK,
             "horizon": HORIZON,
             "hidden_size": HIDDEN_SIZE,
             "num_layers": NUM_LAYERS,
             "dropout": DROPOUT,
-            "target_scaler_mean": target_scaler.mean_.tolist(),
-            "target_scaler_scale": target_scaler.scale_.tolist(),
-            "feature_scaler_mean": feature_scaler.mean_.tolist(),
-            "feature_scaler_scale": feature_scaler.scale_.tolist(),
+            "scaler_mean": scaler.mean_.tolist(),
+            "scaler_scale": scaler.scale_.tolist(),
         },
-        OUTPUT_DIR / "feature_lstm.pt",
+        OUTPUT_DIR / "baseline_lstm.pt",
     )
 
     metrics_df.to_csv(
-        OUTPUT_DIR / "feature_test_metrics.csv",
-        index=False,
-    )
-
-    pd.DataFrame(
-        {
-            "input_feature": input_cols
-        }
-    ).to_csv(
-        OUTPUT_DIR / "feature_columns.csv",
+        OUTPUT_DIR / "baseline_test_metrics.csv",
         index=False,
     )
 

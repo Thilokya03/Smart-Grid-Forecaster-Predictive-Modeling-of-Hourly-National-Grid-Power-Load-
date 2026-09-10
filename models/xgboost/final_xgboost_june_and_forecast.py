@@ -9,8 +9,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 MASTER_PATH = Path("data") / "processed" / "master_training_data.csv"
 FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
-CONFIG_PATH = Path("artifacts") / "xgboost_model" / "xgboost_outputs" / "best_xgb_config.json"
-OUTPUT_DIR = Path("artifacts") / "xgboost_model" / "xgboost_outputs"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "results" / "xgboost_model" / "xgboost_outputs" / "best_xgb_config.json"
+OUTPUT_DIR = Path(__file__).resolve().parents[2] / "results" / "xgboost_model" / "xgboost_outputs"
 FINAL_TEST_START = pd.Timestamp("2026-06-01 00:00:00")
 FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 TARGET_COLUMN = "demand_mw"
