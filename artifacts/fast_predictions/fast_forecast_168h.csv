@@ -1,8 +1,4 @@
 timestamp,predicted_demand_mw,actual_demand_mw,source,missing_features
-2026-09-11 17:00:00,26185.82421875,,recursive_forecast_prediction,
-2026-09-11 18:00:00,26160.986328125,,recursive_forecast_prediction,
-2026-09-11 19:00:00,26513.509765625,,recursive_forecast_prediction,
-2026-09-11 20:00:00,26449.357421875,,recursive_forecast_prediction,
 2026-09-11 21:00:00,25726.005859375,,recursive_forecast_prediction,
 2026-09-11 22:00:00,25076.02734375,,recursive_forecast_prediction,
 2026-09-11 23:00:00,23531.201171875,,recursive_forecast_prediction,
@@ -167,3 +163,7 @@ timestamp,predicted_demand_mw,actual_demand_mw,source,missing_features
 2026-09-18 14:00:00,22418.0078125,,recursive_forecast_prediction,
 2026-09-18 15:00:00,22861.66015625,,recursive_forecast_prediction,
 2026-09-18 16:00:00,25329.68359375,,recursive_forecast_prediction,
+2026-09-18 17:00:00,26344.33203125,,recursive_forecast_prediction,
+2026-09-18 18:00:00,26520.7578125,,recursive_forecast_prediction,
+2026-09-18 19:00:00,26578.814453125,,recursive_forecast_prediction,
+2026-09-18 20:00:00,26622.14453125,,recursive_forecast_prediction,
