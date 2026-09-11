@@ -51,7 +51,7 @@ SARIMAX_MAXITER = 50
 CV_METRIC_PATHS = {
     "XGBoost": PROJECT_ROOT / "results" / "xgboost" / "validation_metrics.csv",
     "Prophet": PROJECT_ROOT / "results" / "prophet_tuned" / "validation_metrics.csv",
-    "DNN_LSTM": PROJECT_ROOT / "results" / "dnn" / "dnn_outputs" / "dnn_validation_metrics.csv",
+    "DNN_LSTM": PROJECT_ROOT / "artifacts" / "dnn" / "dnn_outputs" / "dnn_validation_metrics.csv",
     "SARIMAX": PROJECT_ROOT / "results" / "sarimax" / "sarimax_outputs" / "sarimax_cv_summary.json",
 }
 
@@ -144,6 +144,12 @@ def load_cv_metrics() -> pd.DataFrame:
     rows = []
     for model, path in CV_METRIC_PATHS.items():
         if not path.exists():
+            if model == "DNN_LSTM":
+                print(
+                    f"Warning: DNN CV metrics are unavailable at {path}; "
+                    "omitting DNN/LSTM from ensemble weighting.",
+                    flush=True,
+                )
             continue
         if path.suffix == ".json":
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -170,6 +176,29 @@ def load_cv_metrics() -> pd.DataFrame:
     metrics = pd.DataFrame(rows).dropna(subset=["rmse"]).sort_values("rmse").reset_index(drop=True)
     metrics["cv_rank"] = np.arange(1, len(metrics) + 1)
     return metrics
+
+
+def load_final_dnn_june_predictions(
+    data: pd.DataFrame, future_frame: pd.DataFrame | None, fast: bool = False
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Use the separately trained locked-June DNN output; never tune on June here."""
+    path = PROJECT_ROOT / "artifacts" / "dnn" / "final" / "dnn_final_june_predictions.csv"
+    if not path.exists():
+        raise RuntimeError(
+            "DNN CV metrics exist but final locked-June predictions are unavailable. "
+            "Run python ml_training/final_dnn_june_and_forecast.py; DNN will be omitted."
+        )
+    frame = pd.read_csv(path)
+    required = {"target_timestamp", "actual_mw", "predicted_mw"}
+    if not required.issubset(frame.columns):
+        raise RuntimeError(f"Final DNN predictions lack required columns: {sorted(required - set(frame.columns))}")
+    june = frame.rename(columns={"target_timestamp": "timestamp", "actual_mw": TARGET_COLUMN,
+                                 "predicted_mw": "predicted_demand_mw"})
+    june["timestamp"] = pd.to_datetime(june["timestamp"], errors="coerce")
+    june = june.dropna(subset=["timestamp", TARGET_COLUMN, "predicted_demand_mw"])
+    june["model"] = "DNN_LSTM"
+    # Production/future retraining is deliberately not performed by this evaluator.
+    return june, None
 
 
 def inverse_error_weights(metrics: pd.DataFrame, error_column: str = "rmse") -> dict:
@@ -631,13 +660,12 @@ def main() -> None:
     runners = {
         "XGBoost": train_predict_xgboost,
         "Prophet": train_predict_prophet,
-        "DNN_LSTM": train_predict_dnn_lstm,
+        "DNN_LSTM": load_final_dnn_june_predictions,
         "SARIMAX": train_predict_sarimax,
     }
     future_runners = {
         "XGBoost": forecast_xgboost,
         "Prophet": forecast_prophet,
-        "DNN_LSTM": forecast_dnn_lstm,
     }
 
     errors = {}

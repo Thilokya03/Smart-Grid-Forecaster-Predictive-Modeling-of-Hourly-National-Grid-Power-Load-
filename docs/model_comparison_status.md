@@ -73,18 +73,18 @@ results/sarimax/sarimax_outputs/sarimax_order.json
 Available:
 
 ```text
-results/DNN/DNN_Forecasting.ipynb
-results/DNN/EDA.ipynb
-results/DNN/Data_Cleaning.ipynb
+artifacts/dnn/DNN_Forecasting.ipynb
+artifacts/dnn/EDA.ipynb
+artifacts/dnn/Data_Cleaning.ipynb
 ```
 
 Missing for dashboard curves and serving:
 
 ```text
-results/dnn/dnn_outputs/dnn_predictions.csv
-results/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
-results/dnn/dnn_outputs/dnn_metrics.json
-results/dnn/dnn_outputs/dnn_model.pt
+artifacts/dnn/dnn_outputs/dnn_predictions.csv
+artifacts/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
+artifacts/dnn/dnn_outputs/dnn_metrics.json
+artifacts/dnn/final/dnn_final_model.pt
 ```
 
 ## What Needs To Change

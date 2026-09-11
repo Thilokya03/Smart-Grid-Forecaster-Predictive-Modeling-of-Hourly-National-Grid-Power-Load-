@@ -38,7 +38,7 @@ MASTER_PATH = (
 
 OUTPUT_DIR = (
     PROJECT_ROOT
-    / "results"
+    / "artifacts"
     / "dnn"
     / "dnn_outputs"
 )

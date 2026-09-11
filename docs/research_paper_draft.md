@@ -140,7 +140,7 @@ Prophet tuned and DNN/LSTM still require exported row-level prediction CSVs for 
 
 ```text
 results/prophet_tuned/validation_predictions.csv
-results/dnn/dnn_outputs/dnn_predictions.csv
+artifacts/dnn/dnn_outputs/dnn_predictions.csv
 ```
 
 ## 8. Sprint Delivery Status
@@ -187,10 +187,10 @@ python models/lstm/export_dnn_validation_predictions.py
 Expected outputs:
 
 ```text
-results/dnn/dnn_outputs/dnn_predictions.csv
-results/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
-results/dnn/dnn_outputs/dnn_metrics.json
-results/dnn/dnn_outputs/dnn_model.pt
+artifacts/dnn/dnn_outputs/dnn_predictions.csv
+artifacts/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
+artifacts/dnn/dnn_outputs/dnn_metrics.json
+artifacts/dnn/final/dnn_final_model.pt
 ```
 
 2. Export Prophet tuned validation predictions.

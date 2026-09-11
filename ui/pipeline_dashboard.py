@@ -35,7 +35,7 @@ PROPHET_TUNED_DIR = Path("results") / "prophet_tuned" / "prophet_outputs"
 XGBOOST_DIR = Path("results") / "xgboost"
 XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
 SARIMAX_OUTPUT_DIR = Path("results") / "sarimax" / "sarimax_outputs"
-DNN_OUTPUT_DIR = Path("results") / "dnn" / "dnn_outputs"
+DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
 FAST_PREDICTION_DIR = Path("results") / "fast_predictions"
 FAST_FORECAST_PATH = FAST_PREDICTION_DIR / "current_forecast.csv"
 FAST_BACKFILL_PATH = FAST_PREDICTION_DIR / "gap_fill_predictions.csv"
@@ -1238,7 +1238,7 @@ def dnn_visuals() -> dict:
             },
         ],
         "message": (
-            "DNN visuals use fold-matched CV artifacts from results/dnn/dnn_outputs when exported. "
+            "DNN visuals use fold-matched CV artifacts from artifacts/dnn/dnn_outputs when exported. "
             "If those files are missing, the page falls back to the DNN_Forecasting.ipynb holdout evidence."
         ),
     }

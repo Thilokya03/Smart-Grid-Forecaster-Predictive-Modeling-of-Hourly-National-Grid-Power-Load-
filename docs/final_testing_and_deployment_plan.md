@@ -27,8 +27,8 @@ results/prophet_tuned/prophet_final_june_metrics.json
 results/prophet_tuned/prophet_final_june_predictions.csv
 results/sarimax/sarimax_outputs/sarimax_final_june_metrics.json
 results/sarimax/sarimax_outputs/sarimax_final_june_predictions.csv
-results/dnn/dnn_outputs/dnn_final_june_metrics.json
-results/dnn/dnn_outputs/dnn_final_june_predictions.csv
+artifacts/dnn/final/dnn_final_june_metrics.json
+artifacts/dnn/final/dnn_final_june_predictions.csv
 ```
 
 ## Production Forecast Serving
