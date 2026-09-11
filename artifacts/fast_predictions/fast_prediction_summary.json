@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-11T01:07:15+00:00",
+  "generated_at": "2026-09-11T09:42:47+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -10,34 +10,34 @@
   ],
   "train_start": "2010-01-01 00:00:00",
   "train_end": "2026-06-30 23:00:00",
-  "latest_actual_demand": "2026-09-10 07:00:00",
+  "latest_actual_demand": "2026-09-10 15:00:00",
   "demand_data_lag_hours": 19,
-  "nowcast_gap_start": "2026-09-10 08:00:00",
-  "nowcast_gap_end": "2026-09-11 02:00:00",
+  "nowcast_gap_start": "2026-09-10 16:00:00",
+  "nowcast_gap_end": "2026-09-11 10:00:00",
   "backfill_start": "2026-07-01 00:00:00",
-  "backfill_end": "2026-09-11 02:00:00",
-  "backfill_rows": 1731,
+  "backfill_end": "2026-09-11 10:00:00",
+  "backfill_rows": 1739,
   "backfill_skipped_rows": 0,
-  "forecast_start": "2026-09-11 03:00:00",
-  "forecast_end": "2026-09-18 02:00:00",
+  "forecast_start": "2026-09-11 11:00:00",
+  "forecast_end": "2026-09-18 10:00:00",
   "forecast_rows": 168,
   "forecast_skipped_rows": 0,
   "detailed_24h": {
     "component_rmse": {
-      "fast_xgboost": 931.0681107881317,
-      "lag_24h": 1462.4875325351932,
-      "lag_168h": 1607.9250516852585
+      "fast_xgboost": 947.8301468127856,
+      "lag_24h": 1462.4062471002278,
+      "lag_168h": 1605.857563460681
     },
     "base_weights": {
-      "fast_xgboost": 0.45132817366973804,
-      "lag_24h": 0.28733049729025895,
-      "lag_168h": 0.2613413290400029
+      "fast_xgboost": 0.44675495193492304,
+      "lag_24h": 0.28955552707837656,
+      "lag_168h": 0.26368952098670057
     },
     "scoring_start": "2026-07-01 00:00:00",
-    "scoring_end": "2026-09-10 07:00:00",
-    "scoring_rows": 1712
+    "scoring_end": "2026-09-10 15:00:00",
+    "scoring_rows": 1720
   },
-  "elapsed_seconds": 24.723,
+  "elapsed_seconds": 25.468,
   "outputs": {
     "backfill": "artifacts/fast_predictions/gap_fill_predictions.csv",
     "legacy_backfill": "artifacts/fast_predictions/july_to_sept10_predictions.csv",
