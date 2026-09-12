@@ -1,78 +1,78 @@
 {
-  "id": "71d672ec054d4e1bb07dc46ef764fd42",
+  "id": "781ade96400748f29abf2f673dab6d99",
   "task": "refresh_latest_predictions",
   "label": "Refresh Latest Predictions Now",
-  "started_at": "2026-09-12T01:06:10+00:00",
-  "finished_at": "2026-09-12T01:08:57+00:00",
+  "started_at": "2026-09-12T09:20:07+00:00",
+  "finished_at": "2026-09-12T09:23:09+00:00",
   "status": "degraded",
   "steps": [
     {
       "script": "uk_training_data_prep/download_latest_neso_demand.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:06:10+00:00",
+      "started_at": "2026-09-12T09:20:07+00:00",
       "optional": true,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:06:16+00:00"
+      "finished_at": "2026-09-12T09:20:11+00:00"
     },
     {
       "script": "weather_pipeline/api_weather.py",
       "status": "degraded",
-      "started_at": "2026-09-12T01:06:16+00:00",
+      "started_at": "2026-09-12T09:20:11+00:00",
       "optional": false,
       "exit_code": 0,
       "message": "Weather fetch failed (ReadTimeout); cached weather files were used.",
-      "finished_at": "2026-09-12T01:08:25+00:00"
+      "finished_at": "2026-09-12T09:22:19+00:00"
     },
     {
       "script": "uk_training_data_prep/refresh_local_uk_features.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:25+00:00",
+      "started_at": "2026-09-12T09:22:19+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:26+00:00"
+      "finished_at": "2026-09-12T09:22:20+00:00"
     },
     {
       "script": "uk_training_data_prep/build_weather_feature_data.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:26+00:00",
+      "started_at": "2026-09-12T09:22:20+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:27+00:00"
+      "finished_at": "2026-09-12T09:22:21+00:00"
     },
     {
       "script": "uk_training_data_prep/build_hourly_load_data.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:27+00:00",
+      "started_at": "2026-09-12T09:22:21+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:28+00:00"
+      "finished_at": "2026-09-12T09:22:22+00:00"
     },
     {
       "script": "uk_training_data_prep/build_master_training_data.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:28+00:00",
+      "started_at": "2026-09-12T09:22:22+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:30+00:00"
+      "finished_at": "2026-09-12T09:22:25+00:00"
     },
     {
       "script": "uk_training_data_prep/build_forecast_feature_data.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:30+00:00",
+      "started_at": "2026-09-12T09:22:25+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:31+00:00"
+      "finished_at": "2026-09-12T09:22:25+00:00"
     },
     {
       "script": "ml_training/fast_gap_fill_and_forecast.py",
       "status": "ok",
-      "started_at": "2026-09-12T01:08:31+00:00",
+      "started_at": "2026-09-12T09:22:25+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-12T01:08:57+00:00"
+      "finished_at": "2026-09-12T09:23:09+00:00"
     }
   ],
   "message": "Completed with source fallback or optional-step failures; review the source alerts.",
   "origin": "github_actions",
-  "run_url": "https://github.com/Kusal-Nirukshan/UK-Smart-Grid-Deploy-Render/actions/runs/34663742697"
+  "run_url": "https://github.com/Kusal-Nirukshan/UK-Smart-Grid-Deploy-Render/actions/runs/34685539136"
 }
