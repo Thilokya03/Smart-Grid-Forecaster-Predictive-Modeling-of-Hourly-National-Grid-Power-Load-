@@ -181,7 +181,9 @@ def calculate_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, fl
         "MAE": float(np.mean(np.abs(error))),
         "RMSE": float(np.sqrt(np.mean(np.square(error)))),
         "MAPE": mape,
-        "R2": float(1 - ss_res / ss_tot) if ss_tot else 0.0,
+        # NaN, not 0.0: a constant actual series leaves R2 undefined, and 0.0
+        # reads as a real score in the comparison tables.
+        "R2": float(1 - ss_res / ss_tot) if ss_tot else float("nan"),
     }
 
 

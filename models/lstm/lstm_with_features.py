@@ -1367,7 +1367,10 @@ def main():
         prediction,
     )
 
-    print("\nFinished ✅")
+    # Plain ASCII: a non-ASCII character here raises UnicodeEncodeError on the
+    # Windows cp1252 console, which crashed this script AFTER training finished and
+    # made models/main.py record the whole run as "failed".
+    print("\nFinished.")
     print("Results saved in:", OUTPUT_DIR.resolve())
 
 

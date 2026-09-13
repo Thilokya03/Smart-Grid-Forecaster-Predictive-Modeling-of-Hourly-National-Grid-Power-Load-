@@ -25,8 +25,10 @@ MODELS = {
 }
 REQUIRED_FILES = {
     "prophet_tuned": ["results/prophet_tuned/prophet_outputs/best_prophet_config.json"],
+    # Canonical XGBoost results location, matching the XGBoost script, the
+    # ensemble's CV_METRIC_PATHS and fast_gap_fill_and_forecast.py.
     "xgboost": [
-        "results/xgboost_model/xgboost_outputs/best_xgb_config.json",
+        "results/xgboost/xgboost_outputs/best_xgb_config.json",
         "data/processed/forecast_feature_data.csv",
     ],
 }

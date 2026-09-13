@@ -1182,7 +1182,7 @@ def main():
         )
 
         print(
-            f"R²   : "
+            f"R2    : "
             f"{fold_metric['r2']:.4f}"
         )
 
@@ -1447,7 +1447,7 @@ def main():
     )
 
     print(
-        f"Mean R²   : "
+        f"Mean R2    : "
         f"{mean_r2:.4f}"
     )
 

@@ -9,8 +9,12 @@ from prophet import Prophet
 from prophet.serialize import model_to_json
 
 
-INPUT_PATH = Path("data") / "processed" / "master_training_data.csv"
-OUTPUT_FOLDER = Path(__file__).resolve().parents[2] / "results" / "prophet_v2"
+from models.cross_validation import FINAL_TEST_START
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
+OUTPUT_FOLDER = PROJECT_ROOT / "results" / "prophet_v2"
 
 DATE_COLUMN = "ds"
 TARGET_COLUMN = "y"
@@ -81,9 +85,18 @@ def load_training_frame() -> pd.DataFrame:
     if TRAIN_START_DATE:
         frame = frame[frame[DATE_COLUMN] >= pd.Timestamp(TRAIN_START_DATE)].copy()
 
+    # June 2026 onwards is the locked final test period. Without this filter the
+    # "last VALIDATION_DAYS days" split below lands squarely on it, and the
+    # PARAMETER_GRID search would select hyperparameters on the locked test set.
+    frame = frame[frame[DATE_COLUMN] < FINAL_TEST_START].copy()
+    if frame.empty:
+        raise ValueError(f"No rows remain before the locked test period {FINAL_TEST_START}.")
+
     for column in [column for column in frame.columns if column not in [DATE_COLUMN, TARGET_COLUMN]]:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
-        frame[column] = frame[column].ffill().bfill()
+        # Forward fill only. bfill would carry validation-period regressor values
+        # backwards into the training rows.
+        frame[column] = frame[column].ffill()
 
     return frame.reset_index(drop=True)
 
@@ -118,6 +131,21 @@ def split_train_validation(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
     validation_start = frame[DATE_COLUMN].max() - pd.Timedelta(days=VALIDATION_DAYS) + pd.Timedelta(hours=1)
     train = frame[frame[DATE_COLUMN] < validation_start].copy()
     validation = frame[frame[DATE_COLUMN] >= validation_start].copy()
+
+    if train.empty or validation.empty:
+        raise ValueError("Training/validation split is empty. Check INPUT_PATH and VALIDATION_DAYS.")
+
+    if validation[DATE_COLUMN].max() >= FINAL_TEST_START:
+        raise RuntimeError("Validation window overlaps the locked final test period.")
+
+    # Leading NaNs that ffill could not reach are filled with the TRAINING median,
+    # so no validation-period value ever influences a training row.
+    for column in [c for c in frame.columns if c not in [DATE_COLUMN, TARGET_COLUMN]]:
+        train_median = train[column].median()
+        if pd.isna(train_median):
+            continue
+        train[column] = train[column].fillna(train_median)
+        validation[column] = validation[column].fillna(train_median)
 
     train["hour"] = train[DATE_COLUMN].dt.hour
     train["day_of_week"] = train[DATE_COLUMN].dt.dayofweek
@@ -161,14 +189,22 @@ def build_model(params: dict, regressors: list[str]) -> Prophet:
 
 
 def calculate_metrics(actual: pd.Series, predicted: pd.Series) -> dict[str, float]:
+    # Same MAPE and R2 definitions as every other model in this project: MAPE is
+    # averaged over non-zero actuals, and an undefined R2 is NaN, never 0.0.
     error = actual - predicted
+    nonzero = actual.abs() > 1e-8
+    mape = (
+        float((error[nonzero].abs() / actual[nonzero].abs()).mean() * 100)
+        if nonzero.any()
+        else float("nan")
+    )
     ss_res = (error ** 2).sum()
     ss_tot = ((actual - actual.mean()) ** 2).sum()
     return {
         "mae": round(float(error.abs().mean()), 4),
         "rmse": round(float((error ** 2).mean() ** 0.5), 4),
-        "mape": round(float((error.abs() / actual.abs().clip(lower=1)).mean() * 100), 4),
-        "r2": round(float(1 - (ss_res / ss_tot)), 4) if ss_tot else 0.0,
+        "mape": round(mape, 4),
+        "r2": round(float(1 - (ss_res / ss_tot)), 4) if ss_tot else float("nan"),
     }
 
 

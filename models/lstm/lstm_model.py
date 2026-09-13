@@ -62,10 +62,19 @@ def create_continuous_sequences(values,timestamps):
     return np.asarray(xs,np.float32).reshape(-1,168,values.shape[1]),np.asarray(ys,np.float32).reshape(-1,24),pd.DatetimeIndex(origins),pd.DatetimeIndex(starts),{"candidates":n,"valid":len(xs),"skipped":skipped}
 
 def create_fold_windows(scaled_values,timestamps,validation_start,validation_end):
-    """Compatibility helper: targets wholly before/within the specified outer period."""
+    """Compatibility helper: targets wholly before/within the specified outer period.
+
+    The fifth return value is the ROW INDEX in ``timestamps`` of each validation
+    window's first target hour, so ``timestamps[index + h]`` is the timestamp of
+    horizon ``h + 1``. It is deliberately not the position within the returned
+    sequence arrays: gap-skipping makes those two differ, and callers label their
+    predictions with these indices.
+    """
     x,y,_,starts,_=create_continuous_sequences(scaled_values,timestamps); ends=starts+pd.Timedelta(hours=23)
     train=ends<pd.Timestamp(validation_start); valid=(starts>=pd.Timestamp(validation_start))&(ends<=pd.Timestamp(validation_end))
-    return x[train],y[train],x[valid],y[valid],np.flatnonzero(valid).astype(np.int64)
+    target_rows=pd.DatetimeIndex(pd.to_datetime(timestamps)).get_indexer(starts[valid])
+    if (target_rows<0).any(): raise RuntimeError("A validation target start is absent from the timestamp index.")
+    return x[train],y[train],x[valid],y[valid],target_rows.astype(np.int64)
 
 def split_inner_validation(scaled_values,timestamps,outer_start):
     """Chronological split. Caller fits scaler only on values before returned inner start."""
@@ -88,8 +97,12 @@ def predict(model,loader,device):
         for xb,yb in loader: ps.append(model(xb.to(device)).cpu().numpy());ys.append(yb.numpy())
     return np.vstack(ps),np.vstack(ys)
 def calculate_metrics(actual,predicted):
-    actual,predicted=np.asarray(actual,float).ravel(),np.asarray(predicted,float).ravel(); denominator=np.maximum(np.abs(actual),1e-8)
-    return {"mae":float(mean_absolute_error(actual,predicted)),"rmse":float(np.sqrt(mean_squared_error(actual,predicted))),"mape":float(np.mean(np.abs(actual-predicted)/denominator)*100),"r2":float(r2_score(actual,predicted)) if len(actual)>1 and np.ptp(actual)>0 else float("nan")}
+    # MAPE definition shared by every model in this project: mean over hours whose
+    # actual demand is non-zero, NaN when no such hour exists. Keep the four other
+    # calculate_metrics implementations identical to this one.
+    actual,predicted=np.asarray(actual,float).ravel(),np.asarray(predicted,float).ravel(); nonzero=np.abs(actual)>1e-8
+    mape=float(np.mean(np.abs((actual[nonzero]-predicted[nonzero])/actual[nonzero]))*100) if nonzero.any() else float("nan")
+    return {"mae":float(mean_absolute_error(actual,predicted)),"rmse":float(np.sqrt(mean_squared_error(actual,predicted))),"mape":mape,"r2":float(r2_score(actual,predicted)) if len(actual)>1 and np.ptp(actual)>0 else float("nan")}
 def calculate_horizon_metrics(actual,predicted): return pd.DataFrame([{"horizon":h+1,**calculate_metrics(actual[:,h],predicted[:,h]),"n_samples":len(actual)} for h in range(24)])
 def _loader(x,y,shuffle=False):
     """Shuffle only for training; evaluation loaders must stay in window order so

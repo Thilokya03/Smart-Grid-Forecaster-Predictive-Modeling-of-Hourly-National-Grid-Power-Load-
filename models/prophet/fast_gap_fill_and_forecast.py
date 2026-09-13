@@ -1,3 +1,14 @@
+"""Fast XGBoost gap-fill and short-horizon serving forecast.
+
+TWO THINGS TO KNOW BEFORE USING THIS OUTPUT
+-------------------------------------------
+1. Despite living in models/prophet/, this is an XGBoost script. It is kept here
+   only to avoid breaking existing imports; it is not a Prophet model.
+2. The backfill output replaces missing demand_mw values with MODEL PREDICTIONS.
+   Those files are for serving and dashboards only. Never feed a backfilled file
+   into training or evaluation: the targets would be partly synthetic and every
+   metric computed from them would be measuring the model against itself.
+"""
 from pathlib import Path
 import argparse
 import json

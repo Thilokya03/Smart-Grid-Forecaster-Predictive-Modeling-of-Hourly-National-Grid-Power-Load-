@@ -46,6 +46,9 @@ FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 SEED = 42
 DNN_JUNE_MAX_EPOCHS = EPOCHS
 DNN_FUTURE_MAX_EPOCHS = 5
+# Length of the pre-June inner validation window used for early stopping, matching
+# INNER_VALIDATION_HOURS in models/lstm/lstm_model.py.
+DNN_INNER_VALIDATION_HOURS = 168
 SARIMAX_MAXITER = 50
 
 CV_METRIC_PATHS = {
@@ -321,33 +324,55 @@ def train_predict_dnn_lstm(
     values = data[[TARGET_COLUMN]].values.astype(np.float32)
     timestamps = data["timestamp"].to_numpy()
 
-    train_mask = data["timestamp"] < FINAL_TEST_START
+    # ------------------------------------------------------------------
+    # June is a locked test period: it may be predicted, never selected on.
+    # Early stopping therefore uses an inner validation week that ends before
+    # June starts, and the scaler is fitted only on data before that week.
+    # ------------------------------------------------------------------
+    inner_start = FINAL_TEST_START - pd.Timedelta(hours=DNN_INNER_VALIDATION_HOURS)
+    inner_end = FINAL_TEST_START - pd.Timedelta(hours=1)
+
     scaler = StandardScaler()
-    scaler.fit(values[train_mask.values])
+    scaler.fit(values[(data["timestamp"] < inner_start).to_numpy()])
     scaled = scaler.transform(values).astype(np.float32)
-    x_train, y_train, x_val, y_val, starts = create_fold_windows(
+
+    # Training targets end before the inner week; validation targets sit inside it.
+    x_train, y_train, x_inner, y_inner, _ = create_fold_windows(
+        scaled, timestamps, inner_start, inner_end
+    )
+    # June windows are built for prediction only and never reach the optimiser.
+    _, _, x_val, y_val, starts = create_fold_windows(
         scaled, timestamps, FINAL_TEST_START, FINAL_TEST_END
     )
     if len(x_val) == 0:
-        raise RuntimeError("No DNN/LSTM June validation windows were created")
+        raise RuntimeError("No DNN/LSTM June windows were created")
+    if len(x_train) == 0 or len(x_inner) == 0:
+        raise RuntimeError(
+            "No DNN/LSTM pre-June training or inner-validation windows were created"
+        )
 
     model = BaselineLSTM().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.MSELoss()
     train_loader = DataLoader(LoadForecastDataset(x_train, y_train), batch_size=BATCH_SIZE, shuffle=False)
+    inner_loader = DataLoader(LoadForecastDataset(x_inner, y_inner), batch_size=BATCH_SIZE, shuffle=False)
     val_loader = DataLoader(LoadForecastDataset(x_val, y_val), batch_size=BATCH_SIZE, shuffle=False)
 
     best_state = None
-    best_val_loss = float("inf")
+    best_inner_loss = float("inf")
     patience_counter = 0
     june_epochs = 2 if fast else DNN_JUNE_MAX_EPOCHS
     future_epochs = 2 if fast else DNN_FUTURE_MAX_EPOCHS
     for epoch in range(1, june_epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss = evaluate_loss(model, val_loader, criterion, device)
-        print(f"DNN/LSTM June epoch {epoch:03d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}", flush=True)
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        inner_loss = evaluate_loss(model, inner_loader, criterion, device)
+        print(
+            f"DNN/LSTM June epoch {epoch:03d} | train_loss={train_loss:.6f} "
+            f"| inner_loss={inner_loss:.6f}",
+            flush=True,
+        )
+        if inner_loss < best_inner_loss:
+            best_inner_loss = inner_loss
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
             patience_counter = 0
         else:
@@ -766,8 +791,23 @@ def main() -> None:
     metrics_frame["june_rank"] = np.arange(1, len(metrics_frame) + 1)
     metrics_frame.to_csv(OUTPUT_DIR / "june_all_model_metrics.csv", index=False)
 
+    # An "ensemble" of fewer than two members is a single model wearing the wrong
+    # name. Say so in the summary and on stdout rather than letting a degenerate
+    # run be read as a combined result.
+    is_ensemble = len(ensemble_weights) >= 2
+    degenerate_note = None
+    if not is_ensemble:
+        degenerate_note = (
+            f"NOT AN ENSEMBLE: only {len(selected['model'].tolist())} model(s) were "
+            "available, so these are single-model results. Check "
+            "unavailable_or_failed_models before citing them."
+        )
+
     summary = {
         "method": "Top 3 selected by pre-June CV RMSE; weighted by inverse CV RMSE.",
+        "is_ensemble": is_ensemble,
+        "degenerate_run_warning": degenerate_note,
+        "june_selection": "Inner pre-June validation week only; June never used for selection.",
         "final_holdout_start": str(FINAL_TEST_START),
         "final_holdout_end": str(FINAL_TEST_END),
         "selected_models": selected["model"].tolist(),
@@ -775,6 +815,7 @@ def main() -> None:
         "ensemble_weights_used": ensemble_weights,
         "dnn_june_max_epochs": DNN_JUNE_MAX_EPOCHS,
         "dnn_future_max_epochs": DNN_FUTURE_MAX_EPOCHS,
+        "dnn_inner_validation_hours": DNN_INNER_VALIDATION_HOURS,
         "sarimax_maxiter": SARIMAX_MAXITER,
         "unavailable_or_failed_models": errors,
     }
@@ -785,6 +826,9 @@ def main() -> None:
     print("=" * 70)
     print(metrics_frame.to_string(index=False))
     print()
+    if degenerate_note:
+        print(degenerate_note)
+        print()
     print("Selected by CV:", ", ".join(selected["model"].tolist()))
     print("Weights used:", json.dumps(ensemble_weights or selected_weights, indent=2))
     if errors:

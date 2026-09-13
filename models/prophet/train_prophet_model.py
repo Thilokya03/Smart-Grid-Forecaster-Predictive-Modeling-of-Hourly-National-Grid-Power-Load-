@@ -8,9 +8,12 @@ import pandas as pd
 from prophet import Prophet
 from prophet.serialize import model_to_json
 
+from models.cross_validation import FINAL_TEST_START
 
-INPUT_PATH = Path("data") / "processed" / "master_training_data.csv"
-OUTPUT_FOLDER = Path(__file__).resolve().parents[2] / "results" / "prophet"
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
+OUTPUT_FOLDER = PROJECT_ROOT / "results" / "prophet"
 
 DATE_COLUMN = "ds"
 TARGET_COLUMN = "y"
@@ -77,10 +80,19 @@ def load_training_frame() -> pd.DataFrame:
     if TRAIN_START_DATE:
         frame = frame[frame[DATE_COLUMN] >= pd.Timestamp(TRAIN_START_DATE)].copy()
 
+    # June 2026 onwards is the locked final test period. Without this filter the
+    # "last VALIDATION_DAYS days" split below lands squarely on it, and the
+    # PARAMETER_GRID search would select hyperparameters on the locked test set.
+    frame = frame[frame[DATE_COLUMN] < FINAL_TEST_START].copy()
+    if frame.empty:
+        raise ValueError(f"No rows remain before the locked test period {FINAL_TEST_START}.")
+
     numeric_columns = [column for column in frame.columns if column not in [DATE_COLUMN, TARGET_COLUMN]]
     for column in numeric_columns:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
-        frame[column] = frame[column].ffill().bfill()
+        # Forward fill only. bfill would carry validation-period regressor values
+        # backwards into the training rows.
+        frame[column] = frame[column].ffill()
 
     return frame.reset_index(drop=True)
 
@@ -92,6 +104,19 @@ def split_train_validation(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
 
     if train.empty or validation.empty:
         raise ValueError("Training/validation split is empty. Check INPUT_PATH and VALIDATION_DAYS.")
+
+    if validation[DATE_COLUMN].max() >= FINAL_TEST_START:
+        raise RuntimeError("Validation window overlaps the locked final test period.")
+
+    # Leading NaNs that ffill could not reach are filled with the TRAINING median,
+    # so no validation-period value ever influences a training row.
+    numeric_columns = [column for column in frame.columns if column not in [DATE_COLUMN, TARGET_COLUMN]]
+    for column in numeric_columns:
+        train_median = train[column].median()
+        if pd.isna(train_median):
+            continue
+        train[column] = train[column].fillna(train_median)
+        validation[column] = validation[column].fillna(train_median)
 
     return train, validation
 
@@ -121,16 +146,23 @@ def usable_regressors(train: pd.DataFrame) -> list[str]:
 
 
 def calculate_metrics(actual: pd.Series, predicted: pd.Series) -> dict[str, float]:
+    # Same MAPE and R2 definitions as every other model in this project: MAPE is
+    # averaged over non-zero actuals, and an undefined R2 is NaN, never 0.0.
     error = actual - predicted
-    absolute_percentage_error = (error.abs() / actual.abs().clip(lower=1)).mean() * 100
+    nonzero = actual.abs() > 1e-8
+    mape = (
+        float((error[nonzero].abs() / actual[nonzero].abs()).mean() * 100)
+        if nonzero.any()
+        else float("nan")
+    )
     ss_res = (error ** 2).sum()
     ss_tot = ((actual - actual.mean()) ** 2).sum()
 
     return {
-        "mae": round(error.abs().mean(), 4),
-        "rmse": round((error ** 2).mean() ** 0.5, 4),
-        "mape": round(absolute_percentage_error, 4),
-        "r2": round(1 - (ss_res / ss_tot), 4) if ss_tot else 0.0,
+        "mae": round(float(error.abs().mean()), 4),
+        "rmse": round(float((error ** 2).mean() ** 0.5), 4),
+        "mape": round(mape, 4),
+        "r2": round(float(1 - (ss_res / ss_tot)), 4) if ss_tot else float("nan"),
     }
 
 

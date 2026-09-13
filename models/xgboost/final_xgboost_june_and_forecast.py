@@ -7,10 +7,15 @@ import xgboost as xgb
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-MASTER_PATH = Path("data") / "processed" / "master_training_data.csv"
-FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "results" / "xgboost_model" / "xgboost_outputs" / "best_xgb_config.json"
-OUTPUT_DIR = Path(__file__).resolve().parents[2] / "results" / "xgboost_model" / "xgboost_outputs"
+# Anchor on the file location, not the working directory, so the script behaves
+# the same whether it is run through models/main.py or directly from elsewhere.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
+FORECAST_FEATURE_PATH = PROJECT_ROOT / "data" / "processed" / "forecast_feature_data.csv"
+# Canonical XGBoost results location, matching models/main.py, the ensemble's
+# CV_METRIC_PATHS, fast_gap_fill_and_forecast.py and docs/model_comparison_status.md.
+CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs"
 FINAL_TEST_START = pd.Timestamp("2026-06-01 00:00:00")
 FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 TARGET_COLUMN = "demand_mw"
@@ -73,14 +78,23 @@ def xgb_model(params: dict) -> xgb.XGBRegressor:
 
 
 def metrics(actual: pd.Series, predicted: np.ndarray) -> dict:
+    # Same MAPE and R2 definitions as every other model in this project: MAPE is
+    # averaged over non-zero actuals, and an undefined R2 is NaN, never 0.0.
     actual_values = np.asarray(actual, dtype=float)
     predicted_values = np.asarray(predicted, dtype=float)
     mask = np.abs(actual_values) > 1e-8
+    mape = (
+        float(np.mean(np.abs((actual_values[mask] - predicted_values[mask]) / actual_values[mask])) * 100)
+        if mask.any()
+        else float("nan")
+    )
     return {
         "mae": float(mean_absolute_error(actual_values, predicted_values)),
         "rmse": float(np.sqrt(mean_squared_error(actual_values, predicted_values))),
-        "mape": float(np.mean(np.abs((actual_values[mask] - predicted_values[mask]) / actual_values[mask])) * 100),
-        "r2": float(r2_score(actual_values, predicted_values)),
+        "mape": mape,
+        "r2": float(r2_score(actual_values, predicted_values))
+        if len(actual_values) > 1 and np.ptp(actual_values) > 0
+        else float("nan"),
     }
 
 
@@ -126,10 +140,24 @@ def run_future_forecast(config: dict, data: pd.DataFrame) -> dict:
     features = config["features"]
     forecast_features = pd.read_csv(FORECAST_FEATURE_PATH, low_memory=False)
     forecast_features = add_prediction_features(forecast_features, data)
+    rows_before_dropna = len(forecast_features)
     forecast_features = forecast_features.dropna(subset=features).copy()
     if forecast_features.empty:
         raise ValueError("Forecast feature rows are missing required XGBoost features.")
 
+    # demand_lag_24 / demand_lag_168 are looked up from observed history, so rows
+    # more than 24 hours past the last actual have no lag and are dropped here.
+    # Without this warning the forecast silently comes back far shorter than asked.
+    dropped_rows = rows_before_dropna - len(forecast_features)
+    if dropped_rows:
+        print(
+            f"Warning: dropped {dropped_rows} of {rows_before_dropna} forecast rows "
+            "with missing features (usually lags beyond the observed history). "
+            f"Forecast covers {len(forecast_features)} hours."
+        )
+
+    # Deliberately trained on ALL history, June included: this is the serving model
+    # for future dates, not an evaluation model. Never report metrics from it.
     train = data.dropna(subset=[TARGET_COLUMN, *features]).copy()
     model = xgb_model(config["params"])
     model.fit(train[features], train[TARGET_COLUMN])
@@ -143,6 +171,11 @@ def run_future_forecast(config: dict, data: pd.DataFrame) -> dict:
 
     summary = {
         "model": "XGBoost",
+        "purpose": "Serving forecast for future dates, not an evaluation model.",
+        "includes_locked_test_period": bool(
+            (train["timestamp"] >= FINAL_TEST_START).any()
+        ),
+        "forecast_rows_dropped_for_missing_features": int(dropped_rows),
         "train_start": str(train["timestamp"].min()),
         "train_end": str(train["timestamp"].max()),
         "forecast_start": str(output["timestamp"].min()),
