@@ -21,7 +21,13 @@ HORIZON_METRICS_PATH, METRICS_PATH = OUTPUT_DIR / "dnn_metrics_by_horizon.csv", 
 FOLD_METRICS_PATH = OUTPUT_DIR / "dnn_validation_metrics.csv"
 SEED, INPUT_LENGTH, FORECAST_HORIZON = 42, 168, 24
 HIDDEN_SIZE, DENSE_SIZE, DROPOUT = 64, 32, .2
-BATCH_SIZE, EPOCHS, PATIENCE, LEARNING_RATE, INNER_VALIDATION_HOURS = 64, 15, 5, .005, 168
+# INNER_VALIDATION_HOURS is 4 weeks so the inner window yields ~649 selection
+# windows, matching the 649-721 windows each outer fold is scored on. At 168 hours
+# it produced only 145, so epoch choice rested on a signal five times weaker than
+# the reported score and moved by ~30% between epochs. Every model that early-stops
+# must use this same value; import it rather than hard-coding a duration.
+# EPOCHS/PATIENCE are sized so early stopping, not the cap, ends training.
+BATCH_SIZE, EPOCHS, PATIENCE, LEARNING_RATE, INNER_VALIDATION_HOURS = 64, 60, 8, .005, 672
 FOLDS = VALIDATION_FOLDS
 
 def set_seed(seed=SEED):

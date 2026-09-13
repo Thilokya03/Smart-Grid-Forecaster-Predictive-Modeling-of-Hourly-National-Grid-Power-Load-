@@ -1,92 +1,116 @@
 # Model Comparison Status
 
-All models below are evaluated on the same four chronological validation folds
-(Aug 2025, Nov 2025, Feb 2026, May 2026) defined in `models/cross_validation.py`,
-forecasting 24 hours ahead from 168 hours of history. June 2026 is the locked
-final test period and never enters cross-validation or model selection.
+All models below forecast 24 hours ahead from 168 hours of history, on the same
+four chronological validation folds (Aug 2025, Nov 2025, Feb 2026, May 2026)
+defined in `models/cross_validation.py`. June 2026 is the locked final test
+period and never enters cross-validation or model selection.
 
-## Reproducible CV Leaderboard
+Every model is scored with the same `calculate_metrics` definition (MAPE averaged
+over non-zero actuals, NaN for an undefined R2) over the same population — one
+prediction per forecast origin per horizon, 649–721 windows x 24 horizons per
+fold — and aggregated as an unweighted mean of fold metrics.
 
-Every row here is backed by code and result artifacts that exist in this repository.
+## CV Leaderboard
 
-| Rank | Model | Mean MAE | Mean RMSE | Mean MAPE | Mean R2 | Protocol | Artifacts |
-|---:|---|---:|---:|---:|---:|---|---|
-| 1 | TimesFM 2.5 (zero-shot) | 1287.77 | 1780.74 | 5.04% | 0.8132 | Clean: pretrained, no training, no early stopping | `results/timesfm_validation_metrics.csv` |
-| 2 | C11 Transformer | 1247.83 | 1664.98 | 4.83% | 0.8445 | **Biased** (see below) | `results/c11_transformer/` |
-| 3 | DNN/LSTM | 1754.81 | 2256.57 | 6.99% | 0.7057 | **Biased** (see below) | `results/dnn/dnn_outputs/` |
+Three models, all under a clean protocol: early stopping on an inner validation
+window that ends before each fold begins, so no model ever selects on the data it
+is scored on.
 
-TimesFM is ranked first despite a marginally higher MAE because it is the only
-one of the three produced under a clean protocol. The Transformer and DNN/LSTM
-numbers come from runs that selected the best epoch on the same fold they then
-scored, so both are optimistic by an unmeasured amount and the three are not yet
-comparable on equal terms.
+| Rank | Model | Mean MAE | Mean RMSE | Mean MAPE | Mean R2 | Artifacts |
+|---:|---|---:|---:|---:|---:|---|
+| 1 | LSTM | **1287.52** | 1702.99 | 5.096% | 0.8345 | `artifacts/dnn/dnn_outputs/` |
+| 2 | TimesFM 2.5 (zero-shot) | 1287.77 | 1780.74 | 5.040% | 0.8132 | `results/timesfm_validation_metrics.csv` |
+| 3 | C11 Transformer | 1297.63 | 1726.60 | 5.011% | 0.8352 | `results/c11_transformer/` |
 
-### Outstanding protocol issues behind rows 2 and 3
+### The three models are statistically indistinguishable
 
-- `models/transformer/transformer_model.py` early-stops on the outer validation
-  fold and reports metrics on that same fold.
-- `results/dnn/dnn_outputs/dnn_metrics.json` was produced by
-  `models/lstm/dnn_4fold_cv.py`, which has the same defect.
-  `models/lstm/lstm_model.py` implements the leakage-safe protocol (a 168-hour
-  inner validation window before each fold) but has not yet been rerun to
-  replace those figures.
+The full MAE spread is **10.11 MW — 0.79%**. A single-layer LSTM, a two-layer
+Transformer, and a 200M-parameter pretrained foundation model that was never
+trained on this data all land in the same place. Each wins a different metric:
+LSTM on MAE and RMSE, the Transformer on MAPE and R2, TimesFM on none while
+requiring no training at all.
 
-Both rows should be regenerated under the inner-validation protocol before this
-table is used in the paper.
+The reasonable reading is that performance here is bounded by the **univariate
+168h -> 24h formulation**, not by model architecture. Adding capacity to a
+demand-only sequence model does not help. This is the central argument for
+testing a model that consumes covariates, and it is now supported by evidence
+rather than assumption.
+
+### Per-fold MAE
+
+| Fold | LSTM | TimesFM | Transformer | Windows scored |
+|---|---:|---:|---:|---:|
+| aug_2025 | 1070.15 | 1132.96 | 1040.62 | 721 |
+| nov_2025 | 1310.59 | 1290.99 | 1463.77 | 697 |
+| feb_2026 | 1491.05 | 1453.53 | 1464.27 | 649 |
+| may_2026 | 1278.31 | 1273.62 | 1221.87 | 721 |
+
+February is the hardest fold for all three. The Transformer's November result is
+an outlier caused by premature early stopping, described below.
+
+## Corrections To Previously Reported Figures
+
+| Model | Previously | Now | Why it changed |
+|---|---:|---:|---|
+| LSTM | 1754.81 | 1287.52 | **-467.29 MW.** Not a leakage effect. The earlier figure came from `dnn_4fold_cv.py`, which trains on strictly chronological batches; the optimiser saw a year of summer, then a year of winter, in order. Shuffling training batches fixed a genuine optimisation pathology, and that gain outweighed the cost of removing the leak. |
+| C11 Transformer | 1247.83 | 1297.63 | **+49.80 MW.** The earlier figure selected the best epoch on the same fold it then scored. This is the cost of removing that bias, and is the expected direction. |
+
+The earlier LSTM figure also carried misleading provenance: both
+`results/dnn/dnn_outputs/dnn_metrics.json` and the copy under `artifacts/` were
+byte-identical output from the leaky `dnn_4fold_cv.py`, not from the
+leakage-safe `lstm_model.py`.
 
 ## Withdrawn Rows
 
-These models were previously listed with CV metrics. They are withdrawn because
-nothing in this repository reproduces them: there is no configuration file, no
-result artifact, and in one case no code at all.
+Previously listed with CV metrics, withdrawn because nothing in this repository
+reproduces them: no configuration file, no result artifact, and in one case no
+code at all.
 
-| Model | Previously claimed MAE | Why it was withdrawn |
+| Model | Previously claimed MAE | Why |
 |---|---:|---|
-| XGBoost | 834.81 | `results/xgboost/xgboost_outputs/best_xgb_config.json` is absent, so `models/xgboost/final_xgboost_june_and_forecast.py` cannot run; the last pipeline run recorded it as `blocked`. No XGBoost CV script exists either: that script only performs the June test and the serving forecast. |
-| Prophet tuned | 1138.73 | `results/prophet_tuned/prophet_outputs/best_prophet_config.json` is absent, so `models/prophet/export_prophet_tuned_validation_predictions.py` cannot run. Recorded as `blocked`. |
+| XGBoost | 834.81 | `results/xgboost/xgboost_outputs/best_xgb_config.json` is absent, so the script cannot run; the last pipeline run recorded it as `blocked`. No XGBoost CV script exists — that script only performs the June test and the serving forecast. |
+| Prophet tuned | 1138.73 | `results/prophet_tuned/prophet_outputs/best_prophet_config.json` is absent; recorded as `blocked`. |
 | SARIMAX | 1583.35 | No SARIMAX training or CV script exists anywhere in the repository, and `results/sarimax/` does not exist. |
 
 Do not reinstate a row until the code that produces it is committed and the
 artifacts it writes are present.
 
-## Single-Split Experiments
+Note also that Prophet predicts each hour once, with no horizon dimension — 720
+scored values per fold against 17,304 for the sequence models. Even once
+reproducible, a Prophet MAE is not directly comparable to the table above: it is
+not an average across horizons 1–24.
 
-These use their own chronological splits, not the shared folds, so their numbers
-must not be placed in the leaderboard above.
+## Known Limitations
 
-| Script | Split | MAE | RMSE | MAPE | Notes |
-|---|---|---:|---:|---:|---|
-| `lstm_baseline_no_features.py` | 70/15/15 tail | 1380.17 | 1830.24 | 5.54% | Beats both naive baselines |
-| `lstm_with_features.py` | 70/15/15 tail | 2129.41 | 2920.62 | 9.07% | Worse than daily naive; the features are not helping |
-| Daily seasonal naive | 70/15/15 tail | 1832.13 | 2567.20 | 7.27% | Baseline |
-| Weekly seasonal naive | 70/15/15 tail | 1989.87 | 2715.41 | 7.75% | Baseline |
+**Premature early stopping on some folds.** With a 168-hour inner window the
+selection set was only 145 windows against 649–721 scored, and the inner loss
+moved roughly 30% between epochs. The Transformer's `nov_2025` fold stopped at
+epoch 2 on that noise while training loss was still falling from 0.0536 to
+0.0402, producing its worst fold (1463.77 against the LSTM's 1310.59). Its
+`may_2026` fold hit the 15-epoch cap with training loss still declining. The
+inner window has since been widened to 672 hours and the epoch budget raised;
+**the figures in this document predate that change and are due for regeneration.**
 
-`train_prophet_model.py` and `train_prophet_model_v2.py` previously validated on
-the last 30 days of data, which was June 2026, and selected hyperparameters on
-it. Both now exclude the locked period before splitting, so their earlier metrics
-(MAE 2908 and 3005, both with negative R2) are void and must be regenerated
-before being quoted anywhere.
+**Runs are not bit-reproducible.** `set_seed()` requests deterministic algorithms
+with `warn_only=True`, but CUDA matmul and memory-efficient attention remain
+non-deterministic unless `CUBLAS_WORKSPACE_CONFIG` is set in the environment
+before PyTorch loads. Reruns will differ slightly despite `seed=42`.
 
-## Ensemble Status
-
-`results/ensemble/` currently holds a **single-model** result, not an ensemble.
-Every other candidate was blocked or recorded as failed, so `selected_models`
-contains one entry and `ensemble_weights_used` is empty. The ensemble script now
-records `is_ensemble` and a `degenerate_run_warning` in its summary so this
-cannot be misread.
-
-The previous June figure in that folder (MAE 1511.61) was produced by a model
-that early-stopped on June itself and is void. The script now early-stops on a
-pre-June inner validation week instead.
+**Weather is used as perfect foresight** by the models that consume it. Prophet
+and XGBoost receive actual observed weather for the hours they are predicting,
+which no operational system would have. The three models in the leaderboard are
+univariate and unaffected.
 
 ## What Needs To Change
 
-1. Rerun the Transformer and DNN/LSTM under the inner-validation protocol and
-   replace rows 2 and 3.
-2. Commit the XGBoost CV/tuning code and its config, or leave the row withdrawn.
-3. Commit the Prophet tuning code and its config, or leave the row withdrawn.
-4. Commit a SARIMAX script, or leave the row withdrawn permanently.
-5. Rerun both Prophet single-split scripts now that June is excluded.
-6. Rerun the ensemble once at least two models produce fold metrics.
-7. Run the June 2026 final test exactly once, after the leaderboard is settled,
+1. Regenerate the leaderboard after the widened inner window and raised epoch cap.
+2. Set `CUBLAS_WORKSPACE_CONFIG` before claiming seed-controlled reproducibility.
+3. Commit the XGBoost CV/tuning code and its config, or leave the row withdrawn.
+4. Commit the Prophet tuning code and its config, or leave the row withdrawn.
+5. Commit a SARIMAX script, or leave the row withdrawn permanently.
+6. Rerun both Prophet single-split scripts now that June is excluded from them.
+7. Rerun the ensemble once at least two models produce fold metrics; it currently
+   holds a single-model result, and its previous June figure (1511.61) came from a
+   model that early-stopped on June itself and is void.
+8. Run the June 2026 final test exactly once, after the leaderboard is settled,
    via `models/lstm/final_dnn_june_and_forecast.py`.

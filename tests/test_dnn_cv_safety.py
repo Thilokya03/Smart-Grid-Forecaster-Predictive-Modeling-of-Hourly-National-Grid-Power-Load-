@@ -22,12 +22,20 @@ def test_cv_boundaries_exclude_locked_june_and_inner_scaler_data():
     assert len(VALIDATION_FOLDS) == 4
     assert [fold[0] for fold in VALIDATION_FOLDS] == ["aug_2025", "nov_2025", "feb_2026", "may_2026"]
     assert all(end < FINAL_TEST_START for _, _, end in VALIDATION_FOLDS)
+    # Derive the boundary from the constant. A hard-coded duration here would keep
+    # passing while the pipeline reserved a different window.
     outer_start = VALIDATION_FOLDS[0][1]
-    inner_start = outer_start - pd.Timedelta(days=7)
-    values = np.arange(300, dtype=float)[:, None]
-    times = pd.date_range(outer_start - pd.Timedelta(hours=300), periods=300, freq="h")
-    scaler = StandardScaler().fit(values[times < inner_start])
-    assert scaler.mean_[0] == np.mean(values[times < inner_start])
+    inner_start = outer_start - pd.Timedelta(hours=dnn.INNER_VALIDATION_HOURS)
+    pre_inner_hours = 300
+    periods = dnn.INNER_VALIDATION_HOURS + pre_inner_hours
+    values = np.arange(periods, dtype=float)[:, None]
+    times = pd.date_range(outer_start - pd.Timedelta(hours=periods), periods=periods, freq="h")
+    before_inner = times < inner_start
+    # The scaler may see only rows preceding the inner window, never the window itself.
+    assert before_inner.sum() == pre_inner_hours
+    assert times[before_inner].max() < inner_start
+    scaler = StandardScaler().fit(values[before_inner])
+    assert scaler.mean_[0] == np.mean(values[before_inner])
 
 
 def test_horizon_metrics_have_all_24_horizons():

@@ -18,11 +18,11 @@ def test_transformer_output_and_positional_encoding():
 
 
 def test_training_exports_horizons_and_reloadable_checkpoint(tmp_path):
-    # 600 hours with the fold starting at index 480. The pipeline reserves a
-    # 168-hour inner validation window before each fold, and a training window needs
-    # a further 168 + 24 hours on top of that, so a shorter series would leave zero
-    # training windows and the run would (correctly) raise.
-    periods, fold_start = 600, 480
+    # The fold start must clear INNER_VALIDATION_HOURS plus a full 168 + 24 training
+    # window, or there are zero training windows and the run (correctly) raises.
+    # Sized off the constant so widening the inner window cannot silently break this.
+    fold_start = transformer.INNER_VALIDATION_HOURS + 328
+    periods = fold_start + 200
     times = pd.date_range("2025-01-01", periods=periods, freq="h")
     demand = 1000 + 100 * np.sin(np.arange(periods) / 24)
     data_path = tmp_path / "data.csv"

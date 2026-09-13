@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from models.cross_validation import FINAL_TEST_START
-from models.lstm.lstm_model import (BATCH_SIZE, CHECKPOINT_DIR, EPOCHS, FORECAST_HORIZON, INPUT_LENGTH, LEARNING_RATE, LoadForecastDataset, BaselineLSTM, PATIENCE, PROJECT_ROOT, calculate_horizon_metrics, calculate_metrics, create_continuous_sequences, load_data, predict, set_seed, split_inner_validation, train_one_epoch, evaluate_loss)
+from models.lstm.lstm_model import (BATCH_SIZE, CHECKPOINT_DIR, EPOCHS, FORECAST_HORIZON, INNER_VALIDATION_HOURS, INPUT_LENGTH, LEARNING_RATE, LoadForecastDataset, BaselineLSTM, PATIENCE, PROJECT_ROOT, calculate_horizon_metrics, calculate_metrics, create_continuous_sequences, load_data, predict, set_seed, split_inner_validation, train_one_epoch, evaluate_loss)
 from torch.utils.data import DataLoader
 
 FINAL_DIR=PROJECT_ROOT/"artifacts"/"dnn"/"final"
@@ -21,7 +21,10 @@ def main():
     set_seed(); FINAL_DIR.mkdir(parents=True,exist_ok=True); data=load_data()
     if data.timestamp.max()<FINAL_TEST_END: raise ValueError("June 2026 is incomplete; locked final test cannot run.")
     # Freeze configuration from CV before this point; June is never used for selection.
-    inner_start=FINAL_TEST_START-pd.Timedelta(days=7); values=data[["demand_mw"]].to_numpy(np.float32); scaler=StandardScaler().fit(values[(data.timestamp<inner_start).to_numpy()]);scaled=scaler.transform(values).astype(np.float32)
+    # Must track INNER_VALIDATION_HOURS: split_inner_validation() derives its own
+    # boundary from that constant, so a hard-coded duration here silently disagrees
+    # with the window the training split actually uses.
+    inner_start=FINAL_TEST_START-pd.Timedelta(hours=INNER_VALIDATION_HOURS); values=data[["demand_mw"]].to_numpy(np.float32); scaler=StandardScaler().fit(values[(data.timestamp<inner_start).to_numpy()]);scaled=scaler.transform(values).astype(np.float32)
     xt,yt,xi,yi,_,_=split_inner_validation(scaled,data.timestamp,FINAL_TEST_START); xa,ya,origins,starts,_=create_continuous_sequences(scaled,data.timestamp);ends=starts+pd.Timedelta(hours=23); june=(starts>=FINAL_TEST_START)&(ends<=FINAL_TEST_END);xo,yo=xa[june],ya[june]
     if not all(map(len,(xt,xi,xo))): raise RuntimeError("Final training has zero train, inner-validation, or June sequences.")
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu");print(f"Device: {device}; final train < {inner_start}, inner ends before June, June is locked test.")

@@ -46,9 +46,9 @@ FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 SEED = 42
 DNN_JUNE_MAX_EPOCHS = EPOCHS
 DNN_FUTURE_MAX_EPOCHS = 5
-# Length of the pre-June inner validation window used for early stopping, matching
-# INNER_VALIDATION_HOURS in models/lstm/lstm_model.py.
-DNN_INNER_VALIDATION_HOURS = 168
+# Imported, not redefined, so it can never drift from the window the CV runs
+# reserve. Every model that early-stops must use the same value.
+from models.lstm.lstm_model import INNER_VALIDATION_HOURS as DNN_INNER_VALIDATION_HOURS  # noqa: E402
 SARIMAX_MAXITER = 50
 
 CV_METRIC_PATHS = {

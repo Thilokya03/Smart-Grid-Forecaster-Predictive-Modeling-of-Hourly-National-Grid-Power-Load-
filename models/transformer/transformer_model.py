@@ -21,9 +21,9 @@ from models.lstm.lstm_model import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_ID = "C11_Transformer"
-# Length of the inner validation window used for early stopping, matching
-# INNER_VALIDATION_HOURS in models/lstm/lstm_model.py.
-INNER_VALIDATION_HOURS = 168
+# Imported rather than redefined: every model that early-stops must reserve the
+# same inner validation window, or their fold metrics stop being comparable.
+from models.lstm.lstm_model import INNER_VALIDATION_HOURS  # noqa: E402
 
 
 class TransformerForecaster(nn.Module):
@@ -60,7 +60,7 @@ class TransformerForecaster(nn.Module):
         return self.head(self.encoder(hidden)[:, -1])
 
 
-def run_pipeline(data_path, results_dir, epochs=15, batch_size=32, patience=5,
+def run_pipeline(data_path, results_dir, epochs=60, batch_size=32, patience=8,
                  learning_rate=0.001, device_name="auto"):
     if min(epochs, batch_size, patience) < 1 or learning_rate <= 0:
         raise ValueError("epochs, batch size, patience, and learning rate must be positive")
@@ -169,9 +169,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-path", type=Path, default=PROJECT_ROOT / "data/processed/master_training_data.csv")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results/c11_transformer")
-    parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=0.001)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
