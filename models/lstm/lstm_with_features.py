@@ -14,10 +14,19 @@ Output:
 
 Main protections:
 - chronological Train / Validation / Test split
+- June 2026 onwards (the locked final test period) is dropped before splitting
 - all scalers fitted on TRAINING data only
 - windows with missing hourly timestamps are skipped
 - direct 168 hours -> 24 hours forecast
 - same main LSTM architecture as the baseline model
+
+NOT FOLD-COMPARABLE
+-------------------
+This script uses a single 70/15/15 chronological split, not the shared
+Aug/Nov/Feb/May folds in models/cross_validation.py. Its metrics measure
+whether exogenous features help this architecture; they must not be placed
+in the cross-validated leaderboard next to XGBoost, Prophet, SARIMAX or
+models/lstm/lstm_model.py.
 """
 
 from __future__ import annotations
@@ -34,6 +43,8 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
+
+from models.cross_validation import FINAL_TEST_START
 
 
 # ============================================================
@@ -409,6 +420,33 @@ def prepare_dataframe():
         )
         .reset_index(drop=True)
     )
+
+    # --------------------------------------------------------
+    # DROP THE LOCKED FINAL TEST PERIOD
+    #
+    # June 2026 onwards is reserved for the single final test in
+    # models/lstm/final_dnn_june_and_forecast.py. Without this filter
+    # the ratio split below puts June inside this script's own test
+    # tail, which would spend the locked period on an experiment.
+    # --------------------------------------------------------
+    rows_before_filter = len(df)
+
+    df = df[
+        df[datetime_col] < FINAL_TEST_START
+    ].reset_index(drop=True)
+
+    dropped_rows = rows_before_filter - len(df)
+
+    if dropped_rows:
+        print(
+            f"\nDropped {dropped_rows} rows from {FINAL_TEST_START} "
+            "onwards (locked final test period)."
+        )
+
+    if (df[datetime_col] >= FINAL_TEST_START).any():
+        raise RuntimeError(
+            "Locked final test data survived the pre-June filter."
+        )
 
     n = len(df)
 

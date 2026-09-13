@@ -198,6 +198,9 @@ def create_fold_windows(
 
     The input window may contain historical observations before
     the validation period, which is correct for time-series forecasting.
+
+    Windows that span a missing hour are skipped, so a 168-hour input is
+    never silently stitched together across a gap in the series.
     """
 
     x_train = []
@@ -208,7 +211,24 @@ def create_fold_windows(
 
     val_target_starts = []
 
+    skipped_for_gaps = 0
+
     n_rows = len(scaled_values)
+
+    # Cumulative count of non-hourly steps, so the continuity of any
+    # window can be tested in O(1) instead of rescanning its timestamps.
+    time_index = pd.DatetimeIndex(
+        pd.to_datetime(timestamps)
+    ).to_numpy()
+
+    non_hourly = np.zeros(n_rows, dtype=np.int64)
+
+    non_hourly[1:] = (
+        np.diff(time_index)
+        != np.timedelta64(1, "h")
+    ).astype(np.int64)
+
+    cumulative_gaps = np.cumsum(non_hourly)
 
     for start in range(
         n_rows - INPUT_LENGTH - FORECAST_HORIZON + 1
@@ -224,6 +244,20 @@ def create_fold_windows(
 
         if target_end > n_rows:
             break
+
+        # ----------------------------------------------------
+        # Continuity check
+        # Every hour from the first input row to the last target
+        # row must be present and exactly one hour apart.
+        # ----------------------------------------------------
+
+        if (
+            cumulative_gaps[target_end - 1]
+            - cumulative_gaps[start]
+        ) != 0:
+
+            skipped_for_gaps += 1
+            continue
 
         target_timestamp_start = timestamps[target_start]
         target_timestamp_end = timestamps[target_end - 1]
@@ -263,6 +297,13 @@ def create_fold_windows(
             val_target_starts.append(
                 target_start
             )
+
+    if skipped_for_gaps:
+        print(
+            "Skipped",
+            skipped_for_gaps,
+            "windows that spanned missing hours.",
+        )
 
     return (
         np.array(x_train, dtype=np.float32),
@@ -529,7 +570,11 @@ def main():
 
     fold_results = []
 
-    best_fold_loss = float("inf")
+    # The best fold is chosen on validation MAE in megawatts, NOT on the
+    # scaled MSE used for early stopping. Each fold fits its own
+    # StandardScaler, so scaled losses live in different units and are not
+    # comparable across folds.
+    best_fold_mae = float("inf")
     best_fold_state = None
     best_fold_name = None
     best_fold_scaler = None
@@ -843,11 +888,15 @@ def main():
 
         # ----------------------------------------------------
         # Keep the best fold model
+        #
+        # Compared on MAE in megawatts. best_val_loss is a scaled MSE
+        # produced by this fold's own scaler, so comparing it against
+        # another fold's value would compare different units.
         # ----------------------------------------------------
 
-        if best_val_loss < best_fold_loss:
+        if fold_metric["mae"] < best_fold_mae:
 
-            best_fold_loss = best_val_loss
+            best_fold_mae = fold_metric["mae"]
 
             best_fold_state = {
                 key: value.clone()
@@ -1010,6 +1059,12 @@ def main():
                 "best_fold":
                     best_fold_name,
 
+                "best_fold_selected_on":
+                    "validation_mae_mw",
+
+                "best_fold_mae_mw":
+                    float(best_fold_mae),
+
                 "scaler_mean":
                     best_fold_scaler.mean_.tolist(),
 
@@ -1048,6 +1103,7 @@ def main():
     print(
         "Best fold:",
         best_fold_name,
+        f"(lowest validation MAE, {best_fold_mae:.4f} MW)",
     )
 
     print()

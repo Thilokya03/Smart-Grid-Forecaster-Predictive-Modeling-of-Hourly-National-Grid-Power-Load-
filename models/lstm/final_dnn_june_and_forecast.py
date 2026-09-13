@@ -12,7 +12,10 @@ from torch.utils.data import DataLoader
 
 FINAL_DIR=PROJECT_ROOT/"artifacts"/"dnn"/"final"
 FINAL_TEST_END=pd.Timestamp("2026-06-30 23:00:00")
-def loader(x,y): return DataLoader(LoadForecastDataset(x,y),batch_size=BATCH_SIZE,shuffle=False)
+def loader(x,y,shuffle=False):
+    """Shuffle only for training, so the frozen final model is fitted the same way
+    as the CV runs in lstm_model.py; June predictions must stay in window order."""
+    return DataLoader(LoadForecastDataset(x,y),batch_size=BATCH_SIZE,shuffle=shuffle)
 def inverse(s,a): return s.inverse_transform(a.reshape(-1,1)).reshape(a.shape)
 def main():
     set_seed(); FINAL_DIR.mkdir(parents=True,exist_ok=True); data=load_data()
@@ -23,8 +26,9 @@ def main():
     if not all(map(len,(xt,xi,xo))): raise RuntimeError("Final training has zero train, inner-validation, or June sequences.")
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu");print(f"Device: {device}; final train < {inner_start}, inner ends before June, June is locked test.")
     model=BaselineLSTM().to(device); opt=torch.optim.Adam(model.parameters(),lr=LEARNING_RATE);criterion=nn.MSELoss();best=None;best_loss=float("inf");wait=0;best_epoch=0
+    train_loader,inner_loader=loader(xt,yt,shuffle=True),loader(xi,yi)
     for epoch in range(1,EPOCHS+1):
-        tl=train_one_epoch(model,loader(xt,yt),criterion,opt,device);il=evaluate_loss(model,loader(xi,yi),criterion,device);print(f"epoch={epoch:02d} train_loss={tl:.6f} inner_loss={il:.6f} patience={wait}/{PATIENCE}")
+        tl=train_one_epoch(model,train_loader,criterion,opt,device);il=evaluate_loss(model,inner_loader,criterion,device);print(f"epoch={epoch:02d} train_loss={tl:.6f} inner_loss={il:.6f} patience={wait}/{PATIENCE}")
         if il<best_loss: best_loss=il;best={k:v.detach().cpu().clone() for k,v in model.state_dict().items()};wait=0;best_epoch=epoch
         else: wait+=1
         if wait>=PATIENCE: break

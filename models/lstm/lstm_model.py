@@ -91,7 +91,10 @@ def calculate_metrics(actual,predicted):
     actual,predicted=np.asarray(actual,float).ravel(),np.asarray(predicted,float).ravel(); denominator=np.maximum(np.abs(actual),1e-8)
     return {"mae":float(mean_absolute_error(actual,predicted)),"rmse":float(np.sqrt(mean_squared_error(actual,predicted))),"mape":float(np.mean(np.abs(actual-predicted)/denominator)*100),"r2":float(r2_score(actual,predicted)) if len(actual)>1 and np.ptp(actual)>0 else float("nan")}
 def calculate_horizon_metrics(actual,predicted): return pd.DataFrame([{"horizon":h+1,**calculate_metrics(actual[:,h],predicted[:,h]),"n_samples":len(actual)} for h in range(24)])
-def _loader(x,y): return DataLoader(LoadForecastDataset(x,y),batch_size=BATCH_SIZE,shuffle=False)
+def _loader(x,y,shuffle=False):
+    """Shuffle only for training; evaluation loaders must stay in window order so
+    predictions line up with their forecast origins."""
+    return DataLoader(LoadForecastDataset(x,y),batch_size=BATCH_SIZE,shuffle=shuffle)
 def _inverse(scaler,a): return scaler.inverse_transform(a.reshape(-1,1)).reshape(a.shape)
 
 def main():
@@ -101,14 +104,19 @@ def main():
     values=data[["demand_mw"]].to_numpy(np.float32);device=torch.device("cuda" if torch.cuda.is_available() else "cpu");print(f"Device: {device}")
     fold_rows=[];prediction_rows=[];horizon_frames=[]
     for fold,outer_start,outer_end in FOLDS:
+        # Re-seed per fold so every fold starts from the same initialisation and
+        # shuffling stream; otherwise folds 2-4 depend on how many batches earlier
+        # folds happened to draw, and a single-fold rerun cannot be reproduced.
+        set_seed()
         assert outer_end<FINAL_TEST_START,f"{fold} overlaps locked June"; inner_start=outer_start-pd.Timedelta(hours=INNER_VALIDATION_HOURS); scaler=StandardScaler().fit(values[(data.timestamp<inner_start).to_numpy()]); scaled=scaler.transform(values).astype(np.float32)
         xt,yt,xi,yi,_,stats=split_inner_validation(scaled,data.timestamp,outer_start); xa,ya,origins,starts,_=create_continuous_sequences(scaled,data.timestamp); ends=starts+pd.Timedelta(hours=23); outer=(starts>=outer_start)&(ends<=outer_end); xo,yo=xa[outer],ya[outer]
         if not all(map(len,(xt,xi,xo))): raise RuntimeError(f"{fold} has zero train, inner, or outer sequences.")
         assert xt.shape[1:]==(168,1) and yt.shape[1]==24 and not (starts[outer]>=FINAL_TEST_START).any()
         print(f"\n{fold}: train < {inner_start}; inner {inner_start} to {outer_start}; outer {outer_start} to {outer_end}; windows candidate/valid/skipped={stats['candidates']}/{stats['valid']}/{stats['skipped']}; sequences={len(xt)}/{len(xi)}/{len(xo)}; scaler=train-only")
         model=BaselineLSTM().to(device);opt=torch.optim.Adam(model.parameters(),lr=LEARNING_RATE);criterion=nn.MSELoss();best_loss=float("inf");best=None;wait=0;best_epoch=0
+        train_loader,inner_loader=_loader(xt,yt,shuffle=True),_loader(xi,yi)
         for epoch in range(1,EPOCHS+1):
-            tl=train_one_epoch(model,_loader(xt,yt),criterion,opt,device);il=evaluate_loss(model,_loader(xi,yi),criterion,device)
+            tl=train_one_epoch(model,train_loader,criterion,opt,device);il=evaluate_loss(model,inner_loader,criterion,device)
             if il<best_loss: best_loss=il;best={k:v.detach().cpu().clone() for k,v in model.state_dict().items()};wait=0;best_epoch=epoch
             else: wait+=1
             print(f"epoch={epoch:02d} train_loss={tl:.6f} inner_loss={il:.6f} patience={wait}/{PATIENCE}")
