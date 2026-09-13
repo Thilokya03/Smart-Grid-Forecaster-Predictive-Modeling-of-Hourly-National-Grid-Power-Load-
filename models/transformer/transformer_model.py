@@ -21,6 +21,9 @@ from models.lstm.lstm_model import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_ID = "C11_Transformer"
+# Length of the inner validation window used for early stopping, matching
+# INNER_VALIDATION_HOURS in models/lstm/lstm_model.py.
+INNER_VALIDATION_HOURS = 168
 
 
 class TransformerForecaster(nn.Module):
@@ -82,15 +85,27 @@ def run_pipeline(data_path, results_dir, epochs=15, batch_size=32, patience=5,
     fold_metrics, frames, history = [], [], []
     for fold, start, end in VALIDATION_FOLDS:
         set_seed()
-        training = values[timestamps < start.to_datetime64()]
+        # The outer fold is scored, never selected on. Early stopping uses an inner
+        # validation week ending before the fold begins, and the scaler sees only data
+        # from before that week - the protocol in models/lstm/lstm_model.py.
+        inner_start = start - pd.Timedelta(hours=INNER_VALIDATION_HOURS)
+        inner_end = start - pd.Timedelta(hours=1)
+        training = values[timestamps < inner_start.to_datetime64()]
         if not len(training):
-            raise ValueError(f"{fold}: no training history")
+            raise ValueError(f"{fold}: no training history before the inner validation week")
         scaler = StandardScaler().fit(training)
-        x_train, y_train, x_val, y_val, indices = create_fold_windows(
-            scaler.transform(values), timestamps, start, end)
-        if not len(x_train) or not len(x_val):
-            raise ValueError(f"{fold}: no complete hourly training/validation windows")
+        scaled = scaler.transform(values)
+        # Training targets end before the inner week; inner targets sit inside it.
+        x_train, y_train, x_inner, y_inner, _ = create_fold_windows(
+            scaled, timestamps, inner_start, inner_end)
+        # Outer fold windows are built for scoring only and never reach the optimiser.
+        _, _, x_val, y_val, indices = create_fold_windows(scaled, timestamps, start, end)
+        if not len(x_train) or not len(x_inner):
+            raise ValueError(f"{fold}: no complete hourly training/inner-validation windows")
+        if not len(x_val):
+            raise ValueError(f"{fold}: no complete hourly outer validation windows")
         train_loader = DataLoader(LoadForecastDataset(x_train, y_train), batch_size=batch_size, shuffle=True)
+        inner_loader = DataLoader(LoadForecastDataset(x_inner, y_inner), batch_size=batch_size)
         val_loader = DataLoader(LoadForecastDataset(x_val, y_val), batch_size=batch_size)
         model = TransformerForecaster().to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -98,13 +113,13 @@ def run_pipeline(data_path, results_dir, epochs=15, batch_size=32, patience=5,
         best_loss, stale, best_state, best_epoch = float("inf"), 0, None, 0
         for epoch in range(1, epochs + 1):
             train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-            val_loss = evaluate_loss(model, val_loader, criterion, device)
-            if not np.isfinite(train_loss) or not np.isfinite(val_loss):
-                raise RuntimeError(f"{fold}: non-finite training or validation loss")
-            history.append(dict(fold=fold, epoch=epoch, train_loss=train_loss, validation_loss=val_loss))
-            print(f"{fold} epoch {epoch}: train={train_loss:.6f} val={val_loss:.6f}", flush=True)
-            if val_loss < best_loss:
-                best_loss, stale, best_epoch = val_loss, 0, epoch
+            inner_loss = evaluate_loss(model, inner_loader, criterion, device)
+            if not np.isfinite(train_loss) or not np.isfinite(inner_loss):
+                raise RuntimeError(f"{fold}: non-finite training or inner-validation loss")
+            history.append(dict(fold=fold, epoch=epoch, train_loss=train_loss, inner_loss=inner_loss))
+            print(f"{fold} epoch {epoch}: train={train_loss:.6f} inner={inner_loss:.6f}", flush=True)
+            if inner_loss < best_loss:
+                best_loss, stale, best_epoch = inner_loss, 0, epoch
                 best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
             else:
                 stale += 1
@@ -128,7 +143,9 @@ def run_pipeline(data_path, results_dir, epochs=15, batch_size=32, patience=5,
                                      "nhead": 4, "num_layers": 2, "dropout": 0.1},
                     "scaler_mean": scaler.mean_.tolist(), "scaler_scale": scaler.scale_.tolist(),
                     "fold": fold, "best_epoch": best_epoch,
-                    "training_end": str(start - pd.Timedelta(hours=1))},
+                    "selected_on": "inner_validation_only",
+                    "inner_validation_start": str(inner_start),
+                    "training_end": str(inner_start - pd.Timedelta(hours=1))},
                    results_dir / f"{fold}_model.pt")
         # Persist completed folds even if a later fold is interrupted.
         predictions = pd.concat(frames, ignore_index=True)
@@ -140,6 +157,9 @@ def run_pipeline(data_path, results_dir, epochs=15, batch_size=32, patience=5,
     pd.DataFrame(horizon_metrics).to_csv(results_dir / "metrics_by_horizon.csv", index=False)
     summary = {"model": MODEL_ID, "device": str(device), "folds": len(fold_metrics),
                "aggregation": "Unweighted mean of fold metrics",
+               "selection": (f"Early stopping on a {INNER_VALIDATION_HOURS}-hour inner validation "
+                             "window before each fold; the outer fold is scored only."),
+               "inner_validation_hours": INNER_VALIDATION_HOURS,
                "metrics": pd.DataFrame(fold_metrics).select_dtypes(include="number").mean().to_dict()}
     (results_dir / "metrics.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary

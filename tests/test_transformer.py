@@ -18,11 +18,16 @@ def test_transformer_output_and_positional_encoding():
 
 
 def test_training_exports_horizons_and_reloadable_checkpoint(tmp_path):
-    times = pd.date_range("2025-01-01", periods=300, freq="h")
-    demand = 1000 + 100 * np.sin(np.arange(300) / 24)
+    # 600 hours with the fold starting at index 480. The pipeline reserves a
+    # 168-hour inner validation window before each fold, and a training window needs
+    # a further 168 + 24 hours on top of that, so a shorter series would leave zero
+    # training windows and the run would (correctly) raise.
+    periods, fold_start = 600, 480
+    times = pd.date_range("2025-01-01", periods=periods, freq="h")
+    demand = 1000 + 100 * np.sin(np.arange(periods) / 24)
     data_path = tmp_path / "data.csv"
     pd.DataFrame({"timestamp": times, "demand_mw": demand}).to_csv(data_path, index=False)
-    folds = (("synthetic", times[240], times[-1]),)
+    folds = (("synthetic", times[fold_start], times[-1]),)
     original_threads = torch.get_num_threads()
     try:
         torch.set_num_threads(1)
@@ -37,7 +42,21 @@ def test_training_exports_horizons_and_reloadable_checkpoint(tmp_path):
     metrics = pd.read_csv(tmp_path / "results/metrics_by_horizon.csv")
     assert len(metrics) == 24
     checkpoint = torch.load(tmp_path / "results/synthetic_model.pt", weights_only=True)
-    assert np.isclose(checkpoint["scaler_mean"][0], demand[:240].mean())
+
+    # Leakage guards: the scaler must see only data before the inner validation
+    # window, and the checkpoint must record that selection never touched the fold.
+    inner_start_index = fold_start - transformer.INNER_VALIDATION_HOURS
+    assert np.isclose(checkpoint["scaler_mean"][0], demand[:inner_start_index].mean())
+    assert checkpoint["selected_on"] == "inner_validation_only"
+    assert pd.Timestamp(checkpoint["inner_validation_start"]) == times[inner_start_index]
+    assert pd.Timestamp(checkpoint["training_end"]) < times[inner_start_index]
+
+    # Every scored target must fall inside the fold, and the epoch log must record
+    # the inner-validation loss rather than a loss measured on the fold itself.
+    assert pd.to_datetime(predictions.target_timestamp).min() >= times[fold_start]
+    history = pd.read_csv(tmp_path / "results/training_history.csv")
+    assert "inner_loss" in history.columns and "validation_loss" not in history.columns
+
     restored = transformer.TransformerForecaster(**checkpoint["model_config"])
     restored.load_state_dict(checkpoint["model_state_dict"])
     restored.eval()

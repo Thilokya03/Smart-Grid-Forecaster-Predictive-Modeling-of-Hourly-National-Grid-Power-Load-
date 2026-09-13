@@ -80,9 +80,11 @@ def load_training_frame() -> pd.DataFrame:
     if TRAIN_START_DATE:
         frame = frame[frame[DATE_COLUMN] >= pd.Timestamp(TRAIN_START_DATE)].copy()
 
-    # June 2026 onwards is the locked final test period. Without this filter the
-    # "last VALIDATION_DAYS days" split below lands squarely on it, and the
-    # PARAMETER_GRID search would select hyperparameters on the locked test set.
+    # June 2026 onwards is the locked final test period. The dataset extends well
+    # past it, so the "last VALIDATION_DAYS days" split below validates on recent
+    # data and TRAINS on everything before it - June included. That contaminates
+    # the locked period as training data before it is ever used as a test, so a
+    # model fitted here could never be fairly scored on June afterwards.
     frame = frame[frame[DATE_COLUMN] < FINAL_TEST_START].copy()
     if frame.empty:
         raise ValueError(f"No rows remain before the locked test period {FINAL_TEST_START}.")
