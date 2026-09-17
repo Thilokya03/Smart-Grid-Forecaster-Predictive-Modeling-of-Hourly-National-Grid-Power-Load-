@@ -79,30 +79,74 @@ def load_timesfm_model(
     return model
 
 
+# TimesFM 2.5's quantile head (`use_continuous_quantile_head=True` in
+# load_timesfm_model) always returns 10 channels: index 0 is the model's mean
+# channel, indices 1-9 are the 0.1-0.9 quantiles in
+# `TimesFM_2p5_200M_Definition.quantiles`. Named here so callers don't have to
+# know that ordering to get a plain-language prediction interval.
+QUANTILE_CHANNELS: dict[str, int] = {"p10": 1, "p50": 5, "p90": 9}
+
+
 def generate_forecast(
     model: Any,
     contexts: Sequence[np.ndarray],
     horizon: int = FORECAST_HORIZON,
     batch_size: int = 32,
-) -> np.ndarray:
-    """Generate point forecasts in bounded batches."""
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Generate point and quantile forecasts in bounded batches.
+
+    Returns `(point_forecast, quantile_forecast)`. `model.forecast()` always
+    returns both; this used to discard the second value with `_`, which threw
+    away the only uncertainty estimate anywhere in this project's serving
+    path even though the quantile head was already switched on at compile
+    time. `quantile_forecast` has shape (n, horizon, 10) -- see
+    `QUANTILE_CHANNELS` for what each channel is -- and is None only if every
+    batch's `model.forecast()` call itself returned None for it (e.g. a stub
+    model that doesn't implement quantiles).
+    """
     if not contexts:
         raise ValueError("At least one context window is required.")
-    batches = []
+    point_batches = []
+    quantile_batches = []
+    saw_missing_quantiles = False
     for start in range(0, len(contexts), batch_size):
         inputs = [
             np.asarray(series, dtype=np.float32)
             for series in contexts[start : start + batch_size]
         ]
-        point_forecast, _ = model.forecast(horizon=horizon, inputs=inputs)
-        batches.append(np.asarray(point_forecast, dtype=np.float32))
-    forecasts = np.concatenate(batches, axis=0)
+        point_forecast, quantile_forecast = model.forecast(horizon=horizon, inputs=inputs)
+        point_batches.append(np.asarray(point_forecast, dtype=np.float32))
+        if quantile_forecast is None:
+            saw_missing_quantiles = True
+        else:
+            quantile_batches.append(np.asarray(quantile_forecast, dtype=np.float32))
+    forecasts = np.concatenate(point_batches, axis=0)
     expected_shape = (len(contexts), horizon)
     if forecasts.shape != expected_shape:
         raise RuntimeError(
             f"TimesFM returned shape {forecasts.shape}; expected {expected_shape}."
         )
-    return forecasts
+    quantile_forecasts = None
+    if not saw_missing_quantiles and quantile_batches:
+        quantile_forecasts = np.concatenate(quantile_batches, axis=0)
+    return forecasts, quantile_forecasts
+
+
+def quantile_columns_from_forecast(
+    quantile_forecast: np.ndarray | None,
+    channels: dict[str, int] = QUANTILE_CHANNELS,
+) -> dict[str, np.ndarray]:
+    """Slice named prediction-interval columns out of a raw quantile forecast.
+
+    Returns {} when `quantile_forecast` is None so callers can pass the
+    result straight through without a None check at every call site.
+    """
+    if quantile_forecast is None:
+        return {}
+    return {
+        f"{name}_demand": quantile_forecast[:, :, index]
+        for name, index in channels.items()
+    }
 
 
 def run_pipeline(
@@ -148,7 +192,8 @@ def run_pipeline(
             f"{fold_name}: evaluating {len(contexts):,} continuous "
             f"{context_length}-to-{horizon}-hour windows."
         )
-        predicted = generate_forecast(model, contexts, horizon, batch_size)
+        predicted, quantile_forecast = generate_forecast(model, contexts, horizon, batch_size)
+        quantile_columns = quantile_columns_from_forecast(quantile_forecast)
         actual = np.stack(actuals)
         fold_metrics = calculate_metrics(actual, predicted)
         fold_rows.append(
@@ -164,7 +209,9 @@ def run_pipeline(
             }
         )
         prediction_frames.append(
-            fold_prediction_frame(fold_name, timestamps, actual, predicted)
+            fold_prediction_frame(
+                fold_name, timestamps, actual, predicted, quantiles=quantile_columns
+            )
         )
 
     fold_data = save_fold_metrics(
@@ -190,7 +237,13 @@ def run_pipeline(
         metrics,
         results_dir / "model_comparison_timesfm.csv",
     )
-    save_plots(prediction_data, results_dir / "plots" / "timesfm", horizon)
+    save_plots(
+        prediction_data,
+        results_dir / "plots" / "timesfm",
+        horizon,
+        lower_column="p10_demand",
+        upper_column="p90_demand",
+    )
     print(
         "TimesFM evaluation: "
         f"MAE={metrics['MAE']:.3f}, RMSE={metrics['RMSE']:.3f}, "

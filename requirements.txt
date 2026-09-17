@@ -80,4 +80,13 @@ urllib3==2.7.0
 wcwidth==0.8.2
 wheel==0.47.0
 timesfm[torch]==2.0.2
+
+# TimesFM covariate explainability (models/timesfm/timesfm_explain.py).
+# Adds jax/jaxlib on top of the scikit-learn already listed above.
+# Optional: tests skip without it.
+timesfm[xreg]==2.0.2
 xgboost
+
+# Temporal Fusion Transformer (models/tft). Optional: tests skip without it.
+pytorch-forecasting==1.8.0
+lightning>=2.0.0,<2.7.0

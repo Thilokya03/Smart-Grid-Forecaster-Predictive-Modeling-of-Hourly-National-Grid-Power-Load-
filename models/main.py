@@ -21,6 +21,7 @@ MODELS = {
     "xgboost": "models.xgboost.final_xgboost_june_and_forecast",
     "c11_transformer": "models.transformer.transformer_model",
     "timesfm": "models.timesfm.timesfm_model",
+    "tft": "models.tft.tft_model",
     "ensemble": "models.ensemble.final_ensemble_june_and_forecast",
 }
 REQUIRED_FILES = {
