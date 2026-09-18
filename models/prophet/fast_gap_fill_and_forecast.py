@@ -1,3 +1,14 @@
+"""Fast XGBoost gap-fill and short-horizon serving forecast.
+
+TWO THINGS TO KNOW BEFORE USING THIS OUTPUT
+-------------------------------------------
+1. Despite living in models/prophet/, this is an XGBoost script. It is kept here
+   only to avoid breaking existing imports; it is not a Prophet model.
+2. The backfill output replaces missing demand_mw values with MODEL PREDICTIONS.
+   Those files are for serving and dashboards only. Never feed a backfilled file
+   into training or evaluation: the targets would be partly synthetic and every
+   metric computed from them would be measuring the model against itself.
+"""
 from pathlib import Path
 import argparse
 import json
@@ -9,7 +20,7 @@ import pandas as pd
 import xgboost as xgb
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(PROJECT_ROOT / "uk_training_data_prep") not in sys.path:
@@ -33,8 +44,8 @@ WEATHER_PATH = PROJECT_ROOT / "data" / "weather_hourly.csv"
 FORECAST_FEATURE_PATH = PROJECT_ROOT / "data" / "processed" / "forecast_feature_data.csv"
 HOLIDAYS_PATH = PROJECT_ROOT / "data" / "external" / "uk_features" / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = PROJECT_ROOT / "data" / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
-CONFIG_PATH = PROJECT_ROOT / "artifacts" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "fast_predictions"
+CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "fast_predictions"
 TARGET_COLUMN = "demand_mw"
 DEFAULT_HORIZONS = [24, 48, 72, 168]
 WEATHER_COLUMNS = [

@@ -69,10 +69,7 @@ class LstmModelTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as raised:
                 lstm.cli()
         self.assertEqual(raised.exception.code, 130)
-        self.assertIn(
-            "run the same command again to resume",
-            output.getvalue().lower(),
-        )
+        self.assertIn("training interrupted", output.getvalue().lower())
 
 
 if __name__ == "__main__":

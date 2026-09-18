@@ -1,3 +1,16 @@
+# CPU-only variant of requirements.txt.
+#
+# The default requirements.txt pulls the CUDA build of torch (torch==2.13.0
+# resolves to a "+cuNNN" wheel that bundles the CUDA runtime and uses an
+# NVIDIA GPU when one is present). Everything else in this project (jax/
+# jaxlib for TimesFM's xreg explainability, xgboost) already installs as a
+# CPU-capable wheel by default, so torch is the only package that needs a
+# different source here.
+#
+# Install with:
+#   pip install -r requirements-cpu.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 anyio==4.15.1
 asttokens==3.0.2
 certifi==2026.6.17
@@ -70,7 +83,7 @@ statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
 timesfm==2.0.2
-torch==2.13.0
+torch==2.9.0
 tornado==6.5.8
 tqdm==4.69.0
 traitlets==5.16.1
@@ -82,11 +95,9 @@ wheel==0.47.0
 timesfm[torch]==2.0.2
 
 # TimesFM covariate explainability (models/timesfm/timesfm_explain.py).
-# Adds jax/jaxlib on top of the scikit-learn already listed above.
+# jax/jaxlib install as CPU-only wheels by default (no CUDA index needed),
+# so no change from requirements.txt here.
 # Optional: tests skip without it.
-# Pinned explicitly because timesfm[xreg] alone pulls jax[cuda] unconstrained,
-# which has no Windows wheel and makes pip backtrack to a jax release too old
-# to have a matching jaxlib (import fails with "jax requires jaxlib").
 jax==0.10.2
 jaxlib==0.10.2
 timesfm[xreg]==2.0.2

@@ -27,7 +27,7 @@ from torch.utils.data import (
 # PATHS
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 MASTER_PATH = (
     PROJECT_ROOT
@@ -246,6 +246,12 @@ def create_fold_windows(
     validation_start,
     validation_end,
 ):
+    """
+    Build 168-hour input -> 24-hour target windows for one fold.
+
+    Windows that span a missing hour are skipped, so a 168-hour input is
+    never silently stitched together across a gap in the series.
+    """
 
     x_train = []
     y_train = []
@@ -255,8 +261,30 @@ def create_fold_windows(
 
     val_target_starts = []
 
+    skipped_for_gaps = 0
+
     n_rows = len(
         scaled_values
+    )
+
+    # Cumulative count of non-hourly steps, so the continuity of any
+    # window can be tested in O(1) instead of rescanning its timestamps.
+    time_index = pd.DatetimeIndex(
+        pd.to_datetime(timestamps)
+    ).to_numpy()
+
+    non_hourly = np.zeros(
+        n_rows,
+        dtype=np.int64,
+    )
+
+    non_hourly[1:] = (
+        np.diff(time_index)
+        != np.timedelta64(1, "h")
+    ).astype(np.int64)
+
+    cumulative_gaps = np.cumsum(
+        non_hourly
     )
 
     max_start = (
@@ -281,6 +309,21 @@ def create_fold_windows(
             target_start
             + FORECAST_HORIZON
         )
+
+        # ----------------------------------------------------
+        # CONTINUITY CHECK
+        #
+        # Every hour from the first input row to the last target
+        # row must be present and exactly one hour apart.
+        # ----------------------------------------------------
+
+        if (
+            cumulative_gaps[target_end - 1]
+            - cumulative_gaps[start]
+        ) != 0:
+
+            skipped_for_gaps += 1
+            continue
 
         target_timestamp_start = (
             timestamps[target_start]
@@ -344,6 +387,14 @@ def create_fold_windows(
             val_target_starts.append(
                 target_start
             )
+
+    if skipped_for_gaps:
+
+        print(
+            "Skipped",
+            skipped_for_gaps,
+            "windows that spanned missing hours.",
+        )
 
     return (
         np.asarray(
@@ -1131,7 +1182,7 @@ def main():
         )
 
         print(
-            f"R²   : "
+            f"R2    : "
             f"{fold_metric['r2']:.4f}"
         )
 
@@ -1396,7 +1447,7 @@ def main():
     )
 
     print(
-        f"Mean R²   : "
+        f"Mean R2    : "
         f"{mean_r2:.4f}"
     )
 
