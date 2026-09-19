@@ -25,6 +25,13 @@ services:
         value: "6"
       - key: AUTO_PREDICTION_RUN_ON_START
         value: "false"
+      - key: DATABASE_URL
+        # Supabase Connect -> Session pooler (port 5432). Set in Render.
+        sync: false
+      - key: DATABASE_SCHEMA
+        value: weather_pipeline
+      - key: PGSSLMODE
+        value: require
       - key: DASHBOARD_ADMIN_TOKEN
         sync: false
       - key: DASHBOARD_SUPER_ADMIN_TOKEN

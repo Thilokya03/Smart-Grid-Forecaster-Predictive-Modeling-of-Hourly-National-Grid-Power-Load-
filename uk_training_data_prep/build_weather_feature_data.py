@@ -2,6 +2,11 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    from .database import publish_dataframe
+except ImportError:
+    from database import publish_dataframe
+
 
 BASE_WEATHER_PATH = Path("data") / "weather_historical" / "uk_average_weather.csv"
 BRIDGE_WEATHER_PATH = Path("data") / "weather_runtime" / "july_bridge_weather_data.csv"
@@ -56,6 +61,7 @@ def build_weather_features() -> pd.DataFrame:
 def main() -> None:
     output = build_weather_features()
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    publish_dataframe(output, "weather_hourly")
     output.to_csv(OUTPUT_PATH, index=False)
 
     print(f"Saved weather feature data -> {OUTPUT_PATH}")

@@ -156,6 +156,7 @@ Deploy steps:
 5. Set secret values for:
    - `DASHBOARD_ADMIN_TOKEN`
    - `DASHBOARD_SUPER_ADMIN_TOKEN`
+   - `DATABASE_URL`
 6. Create the service and wait for the first deploy.
 7. Open the Render URL.
 
@@ -178,6 +179,107 @@ https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOK
 ```
 
 Free Render web services do not support persistent disks, so this deployment stores generated `data/` and `artifacts/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
+
+### Supabase PostgreSQL storage
+
+The four canonical pipeline datasets are published to PostgreSQL whenever
+`DATABASE_URL` is configured. The existing CSV files are still written after a
+successful database publication, so training and dashboard code can continue
+to use the same paths.
+
+This deployment uses Supabase as a PostgreSQL host. It connects directly with
+the database connection string; it does not use the Supabase Data API, Auth,
+or JavaScript client. Therefore, `SUPABASE_URL`, publishable/anon keys, and
+secret/service-role keys are not required.
+
+Create a free Supabase project, then open **Connect** and select **Session
+pooler**. Use the session-pooler connection string on port `5432`, which works
+over IPv4 from Render, GitHub Actions, and most local networks. Replace
+`[YOUR-PASSWORD]` with the database password selected when the project was
+created. Percent-encode reserved password characters such as `@`, `#`, `?`,
+and spaces before placing the password in a URL.
+
+The connection should have this general form:
+
+```text
+DATABASE_URL=postgresql://postgres.<project-ref>:<encoded-password>@<pooler-host>:5432/postgres?sslmode=require
+DATABASE_SCHEMA=weather_pipeline
+PGSSLMODE=require
+```
+
+Hosted `postgresql://` and legacy `postgres://` connection strings are
+automatically configured to use the included Psycopg 3 driver.
+
+The generated tables are `hourly_load`, `weather_hourly`,
+`master_training_data`, `forecast_feature_data`, and `forecast_predictions`.
+Each update replaces its table in one transaction and adds an entry to
+`pipeline_runs`. When `DATABASE_URL` is absent, the pipeline remains CSV-only.
+
+The dashboard reads master data, forecast inputs, and current predictions from
+PostgreSQL when configured, with CSV fallback if a dashboard read fails. The
+fast prediction job reads its training and feature inputs from PostgreSQL and
+publishes all generated horizons to `forecast_predictions`; its existing CSV
+outputs remain unchanged.
+
+To backfill PostgreSQL from the current CSV snapshots without downloading new
+source data:
+
+```powershell
+python uk_training_data_prep\publish_existing_csvs.py
+```
+
+Run the prediction task once to create `forecast_predictions`, then verify
+connectivity and row counts:
+
+```powershell
+python ml_training\fast_gap_fill_and_forecast.py
+python uk_training_data_prep\check_database.py
+```
+
+#### Supabase and deployment secrets
+
+Set these values in the Render web service under **Environment**:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **Session pooler** URL with the database password |
+| `DASHBOARD_ADMIN_TOKEN` | A random token generated locally |
+| `DASHBOARD_SUPER_ADMIN_TOKEN` | A different random token generated locally |
+
+`DATABASE_SCHEMA=weather_pipeline` and `PGSSLMODE=require` are already set by
+`render.yaml`. Because `DATABASE_URL` has `sync: false`, add it manually when
+updating an existing Render Blueprint, then choose **Save and deploy**.
+
+Generate the two dashboard tokens locally; these do not come from Supabase:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+In GitHub, open **Settings > Secrets and variables > Actions** and create one
+repository secret:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | The same Supabase **Session pooler** URL |
+
+The workflow already sets `PGSSLMODE=require`. Keep the connection string and
+dashboard tokens out of source control. A Supabase publishable key or secret
+API key is only needed if the application is later changed to use Supabase's
+REST API, Auth, Realtime, or Storage.
+
+For the initial local backfill in PowerShell:
+
+```powershell
+$env:DATABASE_URL = "<Supabase Session pooler URL>"
+$env:DATABASE_SCHEMA = "weather_pipeline"
+$env:PGSSLMODE = "require"
+
+python uk_training_data_prep\publish_existing_csvs.py
+python ml_training\fast_gap_fill_and_forecast.py
+python uk_training_data_prep\check_database.py
+```
 
 ## NESO Lag Handling
 
