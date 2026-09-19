@@ -3,6 +3,11 @@ from typing import Iterable
 
 import pandas as pd
 
+try:
+    from .database import publish_dataframe
+except ImportError:
+    from database import publish_dataframe
+
 LOAD_PATH = Path("data") / "uk_load_hourly.csv"
 WEATHER_PATH = Path("data") / "weather_hourly.csv"
 HOLIDAYS_PATH = Path("data/external/uk_features") / "full_calendar_features_2010_onwards.csv"
@@ -306,6 +311,7 @@ def main() -> None:
     merged = merge_datasets(load_df, weather_df, holidays_df, economic_df)
     merged = apply_yearly_rolling_window(merged)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    publish_dataframe(merged, "master_training_data")
     merged.to_csv(output_path, index=False)
 
     print(f"Saved master training dataset -> {output_path}")

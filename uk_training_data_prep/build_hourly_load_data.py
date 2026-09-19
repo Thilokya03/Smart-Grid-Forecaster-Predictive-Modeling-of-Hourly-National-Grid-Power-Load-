@@ -3,6 +3,11 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    from .database import publish_dataframe
+except ImportError:
+    from database import publish_dataframe
+
 
 INPUT_FOLDER = Path(os.getenv("DEMAND_INPUT_FOLDER", Path.home() / "Downloads"))
 RAW_NESO_FOLDER = Path("data") / "raw" / "neso"
@@ -133,6 +138,7 @@ def main() -> None:
     delete_old_timestamped_outputs()
     if LATEST_OUTPUT_PATH.exists():
         LATEST_OUTPUT_PATH.unlink()
+    publish_dataframe(output, "hourly_load")
     output.to_csv(output_path, index=False)
     output.to_csv(LATEST_OUTPUT_PATH, index=False)
 

@@ -16,6 +16,7 @@ import uuid
 
 import pandas as pd
 from ui.pipeline_health import pipeline_health, read_report, write_report, utc_now
+from uk_training_data_prep.database import database_enabled, read_dataframe
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -258,7 +259,13 @@ SUPER_ADMIN_API_PATHS = {
 }
 TASK_LOCK = threading.Lock()
 MASTER_CACHE_LOCK = threading.Lock()
-MASTER_CACHE: dict[str, object] = {"path": None, "mtime": None, "frame": pd.DataFrame()}
+MASTER_CACHE: dict[str, object] = {
+    "path": None,
+    "mtime": None,
+    "loaded_at": 0.0,
+    "frame": pd.DataFrame(),
+}
+DATABASE_CACHE_SECONDS = 60
 
 def project_path(relative_path: Path) -> Path:
     return PROJECT_ROOT / relative_path
@@ -340,17 +347,51 @@ def load_metrics_file(relative_path: Path) -> dict:
         return json.load(file)
 
 
+def load_database_frame(
+    table_name: str,
+    *,
+    filters: dict[str, object] | None = None,
+    order_by: tuple[str, ...] = (),
+) -> pd.DataFrame | None:
+    if not database_enabled():
+        return None
+    try:
+        return read_dataframe(table_name, filters=filters, order_by=order_by)
+    except Exception as exc:
+        print(f"Database read failed for {table_name}; using CSV fallback: {exc}")
+        return None
+
+
 def load_master() -> pd.DataFrame:
     path = project_path(MASTER_PATH)
-    if not path.exists():
+    use_database = database_enabled()
+    if not use_database and not path.exists():
         return pd.DataFrame()
 
-    mtime = path.stat().st_mtime
+    mtime = path.stat().st_mtime if path.exists() else None
     with MASTER_CACHE_LOCK:
-        if MASTER_CACHE["path"] == path and MASTER_CACHE["mtime"] == mtime:
+        database_cache_valid = (
+            use_database
+            and MASTER_CACHE["path"] == "database:master_training_data"
+            and time.time() - float(MASTER_CACHE["loaded_at"]) < DATABASE_CACHE_SECONDS
+        )
+        csv_cache_valid = (
+            not use_database
+            and MASTER_CACHE["path"] == path
+            and MASTER_CACHE["mtime"] == mtime
+        )
+        if database_cache_valid or csv_cache_valid:
             return MASTER_CACHE["frame"].copy()
 
-        frame = pd.read_csv(path, low_memory=False)
+        frame = load_database_frame(
+            "master_training_data", order_by=("timestamp",)
+        )
+        source = "database:master_training_data"
+        if frame is None:
+            if not path.exists():
+                return pd.DataFrame()
+            frame = pd.read_csv(path, low_memory=False)
+            source = path
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         frame = frame.dropna(subset=["timestamp", "demand_mw"]).sort_values("timestamp").reset_index(drop=True)
 
@@ -371,7 +412,14 @@ def load_master() -> pd.DataFrame:
             if column in frame.columns:
                 frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
-        MASTER_CACHE.update({"path": path, "mtime": mtime, "frame": frame})
+        MASTER_CACHE.update(
+            {
+                "path": source,
+                "mtime": mtime,
+                "loaded_at": time.time(),
+                "frame": frame,
+            }
+        )
         return frame.copy()
 
 
@@ -559,9 +607,13 @@ def special_events() -> dict:
 
 def weather_forecast() -> dict:
     path = project_path(WEATHER_FORECAST_PATH)
-    if not path.exists():
+    frame = load_database_frame(
+        "forecast_feature_data", order_by=("timestamp",)
+    )
+    if frame is None and not path.exists():
         return {"points": [], "range": "-"}
-    frame = pd.read_csv(path, low_memory=False)
+    if frame is None:
+        frame = pd.read_csv(path, low_memory=False)
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
     frame = frame.dropna(subset=["timestamp"]).sort_values("timestamp")
     chart = downsample_series(frame, ["temperature_2m", "precipitation", "cloud_cover"], max_points=220)
@@ -625,8 +677,12 @@ def forecast_inputs() -> dict:
         "status": "Forecast feature dataset is missing. Run Build Forecast Feature Dataset.",
     }
 
-    if forecast_path.exists():
+    frame = load_database_frame(
+        "forecast_feature_data", order_by=("timestamp",)
+    )
+    if frame is None and forecast_path.exists():
         frame = pd.read_csv(forecast_path, low_memory=False)
+    if frame is not None:
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         frame = frame.dropna(subset=["timestamp"]).sort_values("timestamp")
         if not frame.empty:
@@ -1426,14 +1482,21 @@ def ml_forecast_payload(query: dict[str, list[str]]) -> dict:
                 return {"status": "error", "message": "horizon must be one of 24, 48, 72, 168.", "models": registry}
             forecast_path = project_path(FAST_HORIZON_FORECAST_PATHS[horizon])
         summary = load_json_file(FAST_SUMMARY_PATH)
-        if not forecast_path.exists():
+        database_model = "fast_weighted_24h" if use_weighted else "fast_xgboost"
+        frame = load_database_frame(
+            "forecast_predictions",
+            filters={"model": database_model, "horizon_hours": horizon},
+            order_by=("timestamp",),
+        )
+        if frame is None and not forecast_path.exists():
             return {
                 "status": "missing_forecast",
                 "model": model,
                 "forecast": [],
                 "message": "Run Fast Gap Fill + Forecast first.",
             }
-        frame = pd.read_csv(forecast_path, low_memory=False)
+        if frame is None:
+            frame = pd.read_csv(forecast_path, low_memory=False)
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         frame = frame.dropna(subset=["timestamp", "predicted_demand_mw"]).sort_values("timestamp")
         forecast_rows = []

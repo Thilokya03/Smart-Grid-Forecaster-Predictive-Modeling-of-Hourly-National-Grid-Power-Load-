@@ -27,6 +27,8 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       DEMAND_INPUT_FOLDER: data/raw/neso
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
 
     steps:
       - name: Check out repository
