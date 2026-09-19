@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-19T06:34:39+00:00",
+  "generated_at": "2026-09-19T09:35:57+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -10,34 +10,34 @@
   ],
   "train_start": "2010-01-01 00:00:00",
   "train_end": "2026-06-30 23:00:00",
-  "latest_actual_demand": "2026-09-18 06:00:00",
-  "demand_data_lag_hours": 25,
-  "nowcast_gap_start": "2026-09-18 07:00:00",
-  "nowcast_gap_end": "2026-09-19 07:00:00",
+  "latest_actual_demand": "2026-09-19 07:00:00",
+  "demand_data_lag_hours": 3,
+  "nowcast_gap_start": "2026-09-19 08:00:00",
+  "nowcast_gap_end": "2026-09-19 10:00:00",
   "backfill_start": "2026-07-01 00:00:00",
-  "backfill_end": "2026-09-19 07:00:00",
-  "backfill_rows": 1928,
+  "backfill_end": "2026-09-19 10:00:00",
+  "backfill_rows": 1931,
   "backfill_skipped_rows": 0,
-  "forecast_start": "2026-09-19 08:00:00",
-  "forecast_end": "2026-09-26 07:00:00",
+  "forecast_start": "2026-09-19 11:00:00",
+  "forecast_end": "2026-09-26 10:00:00",
   "forecast_rows": 168,
   "forecast_skipped_rows": 0,
   "detailed_24h": {
     "component_rmse": {
-      "fast_xgboost": 981.6027951999865,
-      "lag_24h": 1520.8041107884426,
-      "lag_168h": 1605.9251914026472
+      "fast_xgboost": 971.3013061341712,
+      "lag_24h": 1524.1957560682465,
+      "lag_168h": 1606.874875984454
     },
     "base_weights": {
-      "fast_xgboost": 0.4431272655713339,
-      "lag_24h": 0.28601643001125276,
-      "lag_168h": 0.27085630441741326
+      "fast_xgboost": 0.4460858403898264,
+      "lag_24h": 0.28427041454063556,
+      "lag_168h": 0.26964374506953814
     },
     "scoring_start": "2026-07-01 00:00:00",
-    "scoring_end": "2026-09-18 06:00:00",
-    "scoring_rows": 1903
+    "scoring_end": "2026-09-19 07:00:00",
+    "scoring_rows": 1928
   },
-  "elapsed_seconds": 85.378,
+  "elapsed_seconds": 83.162,
   "outputs": {
     "backfill": "artifacts/fast_predictions/gap_fill_predictions.csv",
     "legacy_backfill": "artifacts/fast_predictions/july_to_sept10_predictions.csv",
