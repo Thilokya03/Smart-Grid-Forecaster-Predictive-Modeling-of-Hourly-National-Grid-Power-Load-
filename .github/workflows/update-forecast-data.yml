@@ -5,8 +5,12 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/update-forecast-data.yml"
+      - "weather_pipeline/**"
+      - "uk_training_data_prep/**"
+      - "ml_training/fast_gap_fill_and_forecast.py"
       - "ui/pipeline_runner.py"
       - "ui/pipeline_health.py"
+      - "requirements-render.txt"
   schedule:
     - cron: "17 0,6,12,18 * * *"
       timezone: "Europe/London"
