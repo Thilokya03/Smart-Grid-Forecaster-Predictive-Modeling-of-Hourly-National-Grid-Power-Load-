@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 from requests import RequestException
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
 
@@ -25,8 +27,10 @@ DB_PATH = RUNTIME_DIR / "weather_pipeline.db"
 HISTORY_OUTPUT = RUNTIME_DIR / "rolling_historical_weather.csv"
 FORECAST_OUTPUT = RUNTIME_DIR / "rolling_forecast_weather.csv"
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-SLEEP_BETWEEN_CITIES = 0.5
 RUN_BRIDGE_MAINTENANCE_AFTER_UPDATE = True
+WEATHER_CONNECT_TIMEOUT_SECONDS = 15
+WEATHER_READ_TIMEOUT_SECONDS = 60
+WEATHER_RETRY_COUNT = 2
 
 # Keep this as None for real runs. Set it to a value like
 # "2026-07-14 07:15" when you want to test the exact window calculation.
@@ -74,7 +78,12 @@ def fetch_weather_window(city: str, latitude: float, longitude: float) -> pd.Dat
         "timezone": TIMEZONE,
     }
 
-    response = requests.get(FORECAST_API_URL, params=params, timeout=120)
+    with weather_session() as session:
+        response = session.get(
+            FORECAST_API_URL,
+            params=params,
+            timeout=(WEATHER_CONNECT_TIMEOUT_SECONDS, WEATHER_READ_TIMEOUT_SECONDS),
+        )
     response.raise_for_status()
     data = response.json()
 
@@ -86,6 +95,59 @@ def fetch_weather_window(city: str, latitude: float, longitude: float) -> pd.Dat
     df = pd.DataFrame(data["hourly"])
     df["city"] = city
     return clean_weather_frame(df)
+
+
+def weather_session() -> requests.Session:
+    retry = Retry(
+        total=WEATHER_RETRY_COUNT,
+        connect=WEATHER_RETRY_COUNT,
+        read=WEATHER_RETRY_COUNT,
+        status=WEATHER_RETRY_COUNT,
+        backoff_factor=1.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        raise_on_status=False,
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
+def fetch_all_city_weather() -> dict[str, pd.DataFrame]:
+    cities = list(UK_CITIES)
+    params = {
+        "latitude": ",".join(str(UK_CITIES[city][0]) for city in cities),
+        "longitude": ",".join(str(UK_CITIES[city][1]) for city in cities),
+        "hourly": ",".join(HOURLY_VARIABLES),
+        "past_days": 7,
+        "forecast_days": 8,
+        "timezone": TIMEZONE,
+    }
+
+    with weather_session() as session:
+        response = session.get(
+            FORECAST_API_URL,
+            params=params,
+            timeout=(WEATHER_CONNECT_TIMEOUT_SECONDS, WEATHER_READ_TIMEOUT_SECONDS),
+        )
+    response.raise_for_status()
+    payload = response.json()
+    results = payload if isinstance(payload, list) else [payload]
+    if len(results) != len(cities):
+        raise RuntimeError(
+            f"Weather API returned {len(results)} locations; expected {len(cities)}."
+        )
+
+    frames = {}
+    for city, data in zip(cities, results):
+        if data.get("error"):
+            raise RuntimeError(data.get("reason", data))
+        if "hourly" not in data:
+            raise RuntimeError(f"No hourly data returned for {city}.")
+        frame = pd.DataFrame(data["hourly"])
+        frame["city"] = city
+        frames[city] = clean_weather_frame(frame)
+    return frames
 
 
 def clean_weather_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -316,14 +378,16 @@ def run_once() -> None:
     history_frames = []
     forecast_frames = []
 
-    for city, (latitude, longitude) in UK_CITIES.items():
-        print(f"Fetching {city}...")
-        try:
-            city_weather = fetch_weather_window(city, latitude, longitude)
-        except (RequestException, ValueError, RuntimeError) as exc:
-            if use_cached_weather_outputs(exc):
-                return
-            raise
+    try:
+        weather_by_city = fetch_all_city_weather()
+    except (RequestException, ValueError, RuntimeError) as exc:
+        if use_cached_weather_outputs(exc):
+            return
+        raise
+
+    for city in UK_CITIES:
+        print(f"Processing {city}...")
+        city_weather = weather_by_city[city]
         history, forecast = split_windows(city_weather, anchor_hour)
         for frame, start, end, name in ((history, history_start, history_end, "history"), (forecast, forecast_start, forecast_end, "forecast")):
             validate_window(frame, build_expected_timestamps(start, end), f"{city} {name}")
@@ -331,7 +395,6 @@ def run_once() -> None:
                 raise ValueError(f"{city} {name} contains missing weather values.")
         history_frames.append(history)
         forecast_frames.append(forecast)
-        time.sleep(SLEEP_BETWEEN_CITIES)
 
     city_history_df = pd.concat(history_frames, ignore_index=True)
     city_forecast_df = pd.concat(forecast_frames, ignore_index=True)
