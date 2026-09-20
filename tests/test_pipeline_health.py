@@ -2,7 +2,9 @@ import csv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+import pandas as pd
 
 from ui import pipeline_health as health
 from ui import pipeline_dashboard as dashboard
@@ -68,6 +70,25 @@ def test_bad_forecast_values_and_corrupt_reports_are_not_healthy(tmp_path):
     assert health.read_report("run", tmp_path) == {}
 
 
+def test_write_report_retries_transient_windows_replace_failure(tmp_path):
+    real_replace = health.os.replace
+    calls = 0
+
+    def replace_with_transient_failure(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise PermissionError("file is temporarily locked")
+        return real_replace(source, target)
+
+    with patch.object(health.os, "replace", replace_with_transient_failure), patch.object(health.time, "sleep") as sleep:
+        health.write_report("run", {"status": "ok"}, tmp_path)
+
+    assert calls == 2
+    sleep.assert_called_once_with(health.REPORT_REPLACE_DELAY_SECONDS)
+    assert health.read_report("run", tmp_path) == {"status": "ok"}
+
+
 def test_pipeline_stops_on_required_failure_and_reports_it(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(dashboard, "write_report", lambda name, value: health.write_report(name, value, tmp_path))
@@ -123,6 +144,57 @@ def test_neso_network_fallback_records_cached_status(tmp_path, monkeypatch):
         assert demand.download_latest_update() == cached
     assert record.call_args.args[:2] == ("neso", "cached")
     assert cached.read_text() == "cached"
+
+
+def test_elexon_rows_are_normalized_to_demand_schema():
+    from uk_training_data_prep import download_latest_neso_demand as demand
+
+    response = Mock()
+    response.json.return_value = {
+        "data": [
+            {
+                "settlementDate": "2026-09-11",
+                "settlementPeriod": 1,
+                "quantity": 21000,
+            },
+            {
+                "settlementDate": "2026-09-11",
+                "settlementPeriod": 2,
+                "quantity": 20500,
+            },
+        ]
+    }
+    response.raise_for_status.return_value = None
+    with patch.object(demand.requests, "get", return_value=response):
+        result = demand.fetch_elexon_demand()
+
+    assert list(result.columns) == [demand.DATE_COLUMN, demand.PERIOD_COLUMN, demand.LOAD_COLUMN]
+    assert demand.latest_complete_hour(result) == pd.Timestamp("2026-09-11 00:00:00")
+
+
+def test_elexon_is_used_when_neso_is_stale(tmp_path, monkeypatch):
+    from uk_training_data_prep import download_latest_neso_demand as demand
+
+    monkeypatch.setattr(demand, "RAW_OUTPUT_DIR", tmp_path)
+    response = Mock(content=b"SETTLEMENT_DATE,SETTLEMENT_PERIOD,ND\n2026-09-10,1,20000\n2026-09-10,2,20500\n")
+    response.raise_for_status.return_value = None
+    elexon = pd.DataFrame(
+        {
+            demand.DATE_COLUMN: ["2026-09-11", "2026-09-11"],
+            demand.PERIOD_COLUMN: [1, 2],
+            demand.LOAD_COLUMN: [21000, 20500],
+        }
+    )
+    with (
+        patch.object(demand.requests, "get", return_value=response),
+        patch.object(demand, "demand_is_fresh", return_value=False),
+        patch.object(demand, "fetch_elexon_demand", return_value=elexon),
+        patch.object(demand, "record_source") as record,
+    ):
+        output = demand.download_latest_update()
+
+    assert output.read_text().splitlines()[1:] == ["2026-09-11,1,21000", "2026-09-11,2,20500"]
+    assert record.call_args.kwargs["source"] == "Elexon BMRS fallback"
 
 
 def test_weather_network_fallback_records_cached_status(tmp_path, monkeypatch):

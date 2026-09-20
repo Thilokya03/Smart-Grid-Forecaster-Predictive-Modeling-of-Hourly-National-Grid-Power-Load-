@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STEPS = [
     ("Download latest NESO demand data", ["uk_training_data_prep/download_latest_neso_demand.py"], True),
     ("Refresh local UK holiday and economic features", ["uk_training_data_prep/refresh_local_uk_features.py"], False),
+    ("Audit and repair historical weather gaps", ["weather_pipeline/repair_weather_gaps.py"], False),
     ("Combine historical and rolling weather files", ["uk_training_data_prep/build_weather_feature_data.py"], False),
     ("Build hourly UK demand data", ["uk_training_data_prep/build_hourly_load_data.py"], False),
     ("Build master training dataset", ["uk_training_data_prep/build_master_training_data.py"], False),

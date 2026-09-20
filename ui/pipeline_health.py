@@ -7,11 +7,14 @@ import json
 import math
 import os
 import tempfile
+import time
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATUS_DIR = PROJECT_ROOT / "artifacts" / "pipeline_status"
 UTC = timezone.utc
 UK = ZoneInfo("Europe/London")
+REPORT_REPLACE_ATTEMPTS = 5
+REPORT_REPLACE_DELAY_SECONDS = 0.1
 
 
 def utc_now() -> str:
@@ -33,7 +36,15 @@ def write_report(name: str, value: dict, root: Path = STATUS_DIR) -> None:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=root, suffix=".tmp", delete=False) as file:
             temp = Path(file.name)
             json.dump(value, file, indent=2, allow_nan=False)
-        os.replace(temp, root / f"{name}.json")
+        target = root / f"{name}.json"
+        for attempt in range(REPORT_REPLACE_ATTEMPTS):
+            try:
+                os.replace(temp, target)
+                break
+            except PermissionError:
+                if attempt == REPORT_REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(REPORT_REPLACE_DELAY_SECONDS)
     finally:
         if temp is not None:
             temp.unlink(missing_ok=True)

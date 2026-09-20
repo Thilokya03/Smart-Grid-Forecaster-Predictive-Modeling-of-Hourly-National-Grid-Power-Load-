@@ -281,6 +281,37 @@ python ml_training\fast_gap_fill_and_forecast.py
 python uk_training_data_prep\check_database.py
 ```
 
+### Weather gap audit and repair
+
+The update pipeline audits hourly weather continuity before rebuilding the
+combined weather and master datasets. It checks the aggregate CSVs and saved
+city extracts first. Missing hours that are not available locally are fetched
+from the Open-Meteo historical archive in batched requests, and all configured
+UK cities must contain every requested variable before a repair is published.
+
+Audit without changing files or using the network:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py --check-only
+```
+
+Audit and repair missing hours:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py
+python uk_training_data_prep\build_weather_feature_data.py
+python uk_training_data_prep\build_master_training_data.py
+```
+
+City-level repair evidence is stored in
+`data/weather_runtime/weather_gap_repair_city_data.csv`, and the latest audit
+is stored in `artifacts/pipeline_status/weather_gap_repair.json`. Dataset
+builders stop with an error if hourly gaps or null weather values remain.
+
+The master-data builder preserves the demand and weather measurements from the
+source CSVs. Any outlier treatment needed by a model must be fitted only on its
+training split; the canonical datasets are not percentile-clipped.
+
 ## NESO Lag Handling
 
 NESO demand data can lag behind real time. The latest-prediction task treats the NESO download step as non-blocking: if fresh demand is not available, it continues with the latest cached demand, refreshes weather/features, fills the missing demand interval as a nowcast bridge, and then produces the 24/48/72/168 hour forecasts.

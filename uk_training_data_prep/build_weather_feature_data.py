@@ -1,6 +1,13 @@
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from weather_pipeline.uk_weather_config import HOURLY_VARIABLES
 
 try:
     from .database import publish_dataframe
@@ -58,8 +65,36 @@ def build_weather_features() -> pd.DataFrame:
     return combined
 
 
+def validate_weather_features(frame: pd.DataFrame) -> None:
+    missing_columns = set(HOURLY_VARIABLES).difference(frame.columns)
+    if missing_columns:
+        raise ValueError(f"Combined weather data is missing columns: {sorted(missing_columns)}")
+    if frame.empty:
+        raise ValueError("Combined weather data is empty.")
+
+    expected = pd.date_range(
+        frame[TIMESTAMP_COLUMN].min(),
+        frame[TIMESTAMP_COLUMN].max(),
+        freq="h",
+    )
+    actual = pd.DatetimeIndex(frame[TIMESTAMP_COLUMN].drop_duplicates())
+    missing_hours = expected.difference(actual)
+    null_rows = frame[HOURLY_VARIABLES].isna().any(axis=1)
+    if len(missing_hours) or null_rows.any():
+        details = []
+        if len(missing_hours):
+            details.append(
+                f"{len(missing_hours)} missing timestamps (first: {missing_hours[0]})"
+            )
+        if null_rows.any():
+            first_null = frame.loc[null_rows, TIMESTAMP_COLUMN].iloc[0]
+            details.append(f"{int(null_rows.sum())} rows with null weather values (first: {first_null})")
+        raise ValueError("Combined weather validation failed: " + "; ".join(details))
+
+
 def main() -> None:
     output = build_weather_features()
+    validate_weather_features(output)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     publish_dataframe(output, "weather_hourly")
     output.to_csv(OUTPUT_PATH, index=False)

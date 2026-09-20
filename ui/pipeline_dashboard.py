@@ -160,6 +160,7 @@ TASKS = {
         [
             (Path("uk_training_data_prep") / "download_latest_neso_demand.py", True),
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "refresh_local_uk_features.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_hourly_load_data.py", False),
@@ -176,7 +177,13 @@ TASKS = {
             (Path("uk_training_data_prep") / "build_forecast_feature_data.py", False),
         ],
     ),
-    "build_weather": ("Build Combined Weather", [(Path("uk_training_data_prep") / "build_weather_feature_data.py", False)]),
+    "build_weather": (
+        "Repair + Build Combined Weather",
+        [
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
+            (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
+        ],
+    ),
     "build_load": ("Build Hourly Demand", [(Path("uk_training_data_prep") / "build_hourly_load_data.py", False)]),
     "update_demand": (
         "Update NESO Demand + Rebuild Master",
@@ -196,6 +203,7 @@ TASKS = {
         "Update Weather + Forecast Inputs",
         [
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_forecast_feature_data.py", False),
         ],
@@ -205,6 +213,7 @@ TASKS = {
         [
             (Path("uk_training_data_prep") / "download_latest_neso_demand.py", False),
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "refresh_local_uk_features.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_hourly_load_data.py", False),

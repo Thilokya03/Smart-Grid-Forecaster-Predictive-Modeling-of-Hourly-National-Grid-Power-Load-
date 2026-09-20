@@ -25,7 +25,9 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
     assert.ok(await page.locator('.day-card').count() >= 7);
     await page.locator('#chunkSize').selectOption('3');
     await page.getByRole('tab', {name: 'Data', exact: true}).click();
-    assert.match(await page.locator('#tableCount').innerText(), /of 56 periods/);
+    // A boundary-aligned forecast has 56 blocks; an offset start adds partial
+    // blocks at the beginning and end for 57 clock-aligned periods.
+    assert.match(await page.locator('#tableCount').innerText(), /of (56|57) periods/);
     await page.locator('#nextRows').click();
     assert.match(await page.locator('#tableCount').innerText(), /13-24/);
     await page.locator('.table-time').first().click();
