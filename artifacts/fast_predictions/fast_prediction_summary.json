@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T05:37:32+00:00",
+  "generated_at": "2026-09-20T05:48:24+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -24,31 +24,31 @@
   "forecast_skipped_rows": 0,
   "detailed_24h": {
     "component_rmse": {
-      "fast_xgboost": 1525.551962205217,
+      "fast_xgboost": 1602.679165019344,
       "lag_24h": 2399.4387174769968,
       "lag_168h": 2496.4721802664926
     },
     "base_weights": {
-      "fast_xgboost": 0.445061904694543,
-      "lag_24h": 0.28296828631801074,
-      "lag_168h": 0.2719698089874462
+      "fast_xgboost": 0.4329160303748197,
+      "lag_24h": 0.28916158476185655,
+      "lag_168h": 0.2779223848633237
     },
     "scoring_start": "2026-07-01 00:00:00",
     "scoring_end": "2026-09-20 04:00:00",
     "scoring_rows": 1949
   },
-  "elapsed_seconds": 35.03,
+  "elapsed_seconds": 88.993,
   "outputs": {
-    "backfill": "artifacts\\fast_predictions\\gap_fill_predictions.csv",
-    "legacy_backfill": "artifacts\\fast_predictions\\july_to_sept10_predictions.csv",
-    "current_forecast": "artifacts\\fast_predictions\\current_forecast.csv",
-    "detailed_24h_forecast": "artifacts\\fast_predictions\\detailed_weighted_24h_forecast.csv",
+    "backfill": "artifacts/fast_predictions/gap_fill_predictions.csv",
+    "legacy_backfill": "artifacts/fast_predictions/july_to_sept10_predictions.csv",
+    "current_forecast": "artifacts/fast_predictions/current_forecast.csv",
+    "detailed_24h_forecast": "artifacts/fast_predictions/detailed_weighted_24h_forecast.csv",
     "fast_horizon_forecasts": {
-      "24": "artifacts\\fast_predictions\\fast_forecast_24h.csv",
-      "48": "artifacts\\fast_predictions\\fast_forecast_48h.csv",
-      "72": "artifacts\\fast_predictions\\fast_forecast_72h.csv",
-      "168": "artifacts\\fast_predictions\\fast_forecast_168h.csv"
+      "24": "artifacts/fast_predictions/fast_forecast_24h.csv",
+      "48": "artifacts/fast_predictions/fast_forecast_48h.csv",
+      "72": "artifacts/fast_predictions/fast_forecast_72h.csv",
+      "168": "artifacts/fast_predictions/fast_forecast_168h.csv"
     },
-    "summary": "artifacts\\fast_predictions\\fast_prediction_summary.json"
+    "summary": "artifacts/fast_predictions/fast_prediction_summary.json"
   }
 }

@@ -1,8 +1,8 @@
 {
   "source": "weather",
   "status": "ok",
-  "checked_at": "2026-09-20T05:36:45+00:00",
-  "last_success_at": "2026-09-20T05:36:45+00:00",
+  "checked_at": "2026-09-20T05:42:13+00:00",
+  "last_success_at": "2026-09-20T05:42:13+00:00",
   "message": "Weather fetch succeeded.",
   "forecast_start": "2026-09-20 07:00:00",
   "forecast_end": "2026-09-27 06:00:00",
@@ -13,7 +13,7 @@
     "missing_hours": 0
   },
   "gap_repair": {
-    "checked_at": "2026-09-20T05:36:46.609083+00:00",
+    "checked_at": "2026-09-20T05:42:14.376178+00:00",
     "status": "ok",
     "remaining_missing_hours": 0
   }
