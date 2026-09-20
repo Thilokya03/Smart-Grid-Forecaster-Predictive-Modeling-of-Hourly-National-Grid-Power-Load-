@@ -96,6 +96,21 @@ def publish_dataframe(
         raise ValueError(
             f"{table_name} is missing database key columns: {sorted(missing_keys)}"
         )
+    if key_columns:
+        null_key_count = int(frame[list(key_columns)].isna().any(axis=1).sum())
+        if null_key_count:
+            raise ValueError(
+                f"Refusing to publish {table_name!r}: {null_key_count} rows have "
+                f"null database keys {list(key_columns)}."
+            )
+    if key_columns and frame.duplicated(subset=list(key_columns)).any():
+        duplicate_count = int(
+            frame.duplicated(subset=list(key_columns), keep=False).sum()
+        )
+        raise ValueError(
+            f"Refusing to publish {table_name!r}: {duplicate_count} rows have "
+            f"duplicate database keys {list(key_columns)}."
+        )
 
     schema = _schema_for_url(configured_url)
     staging_name = _validated_identifier(

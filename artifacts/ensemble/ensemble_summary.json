@@ -4,20 +4,21 @@
   "final_holdout_end": "2026-06-30 23:00:00",
   "selected_models": [
     "XGBoost",
+    "Prophet",
     "DNN_LSTM"
   ],
   "cv_weights": {
-    "XGBoost": 0.6027711582828502,
-    "DNN_LSTM": 0.39722884171714984
+    "XGBoost": 0.4176929977149161,
+    "Prophet": 0.30704548156414313,
+    "DNN_LSTM": 0.27526152072094073
   },
   "ensemble_weights_used": {
-    "XGBoost": 0.6027711582828502,
-    "DNN_LSTM": 0.39722884171714984
+    "XGBoost": 0.4176929977149161,
+    "Prophet": 0.30704548156414313,
+    "DNN_LSTM": 0.27526152072094073
   },
   "dnn_june_max_epochs": 15,
   "dnn_future_max_epochs": 5,
   "sarimax_maxiter": 50,
-  "unavailable_or_failed_models": {
-    "Prophet": "KeyError(\"['demand_mw'] not in index\")"
-  }
+  "unavailable_or_failed_models": {}
 }

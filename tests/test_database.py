@@ -174,3 +174,73 @@ def test_publish_dataframe_rejects_empty_snapshot(tmp_path):
         publish_dataframe(
             pd.DataFrame(columns=["timestamp"]), "weather_hourly", url=url
         )
+
+
+def test_publish_dataframe_rejects_null_key(tmp_path):
+    url = f"sqlite:///{(tmp_path / 'pipeline.db').as_posix()}"
+
+    with pytest.raises(ValueError, match="null database keys"):
+        publish_dataframe(
+            pd.DataFrame({"timestamp": [None], "value": [1.0]}),
+            "weather_hourly",
+            url=url,
+        )
+
+
+def test_duplicate_snapshot_is_rejected_without_replacing_good_data(tmp_path):
+    database_path = tmp_path / "pipeline.db"
+    url = f"sqlite:///{database_path.as_posix()}"
+    original = pd.DataFrame(
+        {"timestamp": ["2026-01-01 00:00"], "value": [1.0]}
+    )
+    duplicate = pd.DataFrame(
+        {
+            "timestamp": ["2026-01-02 00:00", "2026-01-02 00:00"],
+            "value": [2.0, 3.0],
+        }
+    )
+    publish_dataframe(original, "weather_hourly", url=url)
+
+    with pytest.raises(ValueError, match="duplicate database keys"):
+        publish_dataframe(duplicate, "weather_hourly", url=url)
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            "SELECT timestamp, value FROM weather_hourly"
+        ).fetchall()
+        publication_count = connection.execute(
+            "SELECT COUNT(*) FROM pipeline_runs"
+        ).fetchone()[0]
+
+    assert rows == [("2026-01-01 00:00", 1.0)]
+    assert publication_count == 1
+
+
+def test_staging_write_failure_preserves_previous_snapshot(tmp_path, monkeypatch):
+    database_path = tmp_path / "pipeline.db"
+    url = f"sqlite:///{database_path.as_posix()}"
+    original = pd.DataFrame(
+        {"timestamp": ["2026-01-01 00:00"], "value": [1.0]}
+    )
+    replacement = pd.DataFrame(
+        {"timestamp": ["2026-01-02 00:00"], "value": [2.0]}
+    )
+    publish_dataframe(original, "weather_hourly", url=url)
+
+    def fail_staging_write(*args, **kwargs):
+        raise RuntimeError("simulated staging write failure")
+
+    monkeypatch.setattr(pd.DataFrame, "to_sql", fail_staging_write)
+    with pytest.raises(RuntimeError, match="simulated staging write failure"):
+        publish_dataframe(replacement, "weather_hourly", url=url)
+
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            "SELECT timestamp, value FROM weather_hourly"
+        ).fetchall()
+        publication_count = connection.execute(
+            "SELECT COUNT(*) FROM pipeline_runs"
+        ).fetchone()[0]
+
+    assert rows == [("2026-01-01 00:00", 1.0)]
+    assert publication_count == 1

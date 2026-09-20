@@ -64,6 +64,11 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
       assert.equal(await page.evaluate(() => [...document.images].every(img => img.complete && img.naturalWidth > 0)), true);
       await page.screenshot({path: path.join(output, 'mobile-' + width + '.png'), fullPage: true});
     }
+    await page.goto(base + '/forecast/detailed');
+    await page.locator('#detailedChart svg').waitFor();
+    assert.equal(await page.locator('#detailedComponentsSection').isVisible(), true);
+    assert.equal(await page.locator('#detailedTable tbody tr').count(), 24);
+    assert.match(await page.locator('#detailedTable thead').innerText(), /Fast estimate/);
     await page.goto(base + '/settings');
     await page.locator('#settingUnit').selectOption('gw');
     await page.locator('#settingTheme').selectOption('light');

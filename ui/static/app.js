@@ -1,6 +1,7 @@
 let selectedPeriod = "last_week";
 let selectedModel = "prophet_v1";
 const chartState = {};
+const isSuperAdminPage = window.location.pathname.replace(/\/+$/, "") === "/super-admin";
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
@@ -54,6 +55,20 @@ function attachAccessTokenToLinks() {
     const parsed = new URL(link.getAttribute("href"), window.location.origin);
     parsed.searchParams.set("token", accessToken);
     link.href = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  });
+}
+
+function prepareSuperAdminPage() {
+  if (!isSuperAdminPage) return;
+  const keep = new Set(["pipelineHealth", "pipeline", "lastOutputSection"]);
+  document.querySelectorAll("main > section").forEach((section) => {
+    if (!keep.has(section.id)) section.hidden = true;
+  });
+  document.querySelectorAll("aside nav a").forEach((link) => {
+    const href = link.getAttribute("href") || "";
+    if (href.startsWith("#") && !["#pipelineHealth", "#pipeline"].includes(href)) {
+      link.hidden = true;
+    }
   });
 }
 
@@ -564,6 +579,10 @@ function clearLoadingErrors() {
 async function refreshAll() {
   clearLoadingErrors();
   await loadPipelineHealth();
+  if (isSuperAdminPage) {
+    await loadSection("Last output", loadLastOutput);
+    return;
+  }
   await loadSection("Summary", loadSummary);
   await loadSection("KPIs", loadKpis);
   await loadSection("Charts", loadCharts);
@@ -599,4 +618,5 @@ document.querySelectorAll("[data-model]").forEach((button) => {
 applyStoredTheme();
 attachAccessTokenToForms();
 attachAccessTokenToLinks();
+prepareSuperAdminPage();
 refreshAll().catch((error) => console.error(error));

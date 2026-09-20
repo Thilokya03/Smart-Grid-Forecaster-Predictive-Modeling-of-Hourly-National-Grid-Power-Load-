@@ -16,11 +16,17 @@ const assert = require('node:assert/strict');
     const health = await response.json();
     assert.equal(health.coverage['168'].rows, 168);
     const errors = [];
+    const initialApiPaths = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith('/api/')) initialApiPaths.push(url.pathname);
+    });
     await page.goto(base + '/super-admin?token=' + token);
     await page.waitForFunction(() => document.querySelector('#pipelineHealthSummary').textContent.includes('Checked'));
     await page.waitForTimeout(500);
     assert.equal(await page.locator('#loadErrors').count(), 0, 'admin page should not report stale element references');
+    assert.deepEqual([...new Set(initialApiPaths)].sort(), ['/api/last-output', '/api/pipeline-health']);
     assert.ok(await page.locator('#pipelineSteps tbody tr').count() >= 1);
     await page.screenshot({path: 'results/public-dashboard/super-admin-health.png'});
     let running = false;

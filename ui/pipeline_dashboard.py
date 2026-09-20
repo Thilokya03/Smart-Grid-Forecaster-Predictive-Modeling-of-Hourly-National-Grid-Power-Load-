@@ -25,7 +25,7 @@ PORT = int(os.environ.get("PORT", "8765"))
 AUTO_PREDICTIONS_ENABLED = os.environ.get("AUTO_PREDICTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_PREDICTION_INTERVAL_HOURS = int(os.environ.get("AUTO_PREDICTION_INTERVAL_HOURS", "6"))
 AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", "").strip().lower() in {"1", "true", "yes", "on"}
-DASHBOARD_VERSION = "2026-09-10-ui-v18"
+DASHBOARD_VERSION = "2026-09-20-ui-v19-super-admin-health"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -2116,9 +2116,9 @@ def html_page(last_output: str = "") -> str:
 class DashboardHandler(BaseHTTPRequestHandler):
     last_output = ""
 
-    def send_json(self, payload) -> None:
+    def send_json(self, payload, status_code: int = 200) -> None:
         content = json.dumps(payload).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -2150,7 +2150,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_forbidden(required_role)
                 return
             try:
-                self.send_json(api_payload(parsed.path, query))
+                payload = api_payload(parsed.path, query)
+                status_code = (
+                    400
+                    if isinstance(payload, dict) and payload.get("status") == "error"
+                    else 200
+                )
+                self.send_json(payload, status_code=status_code)
             except KeyError:
                 self.send_error(404)
             except Exception as exc:

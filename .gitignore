@@ -8,11 +8,14 @@ __pycache__/
 .pytest-tmp/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
 venv/
 env/
+.env.*
 .venv-gpu/
 
 # Notebook/runtime caches

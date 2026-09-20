@@ -11,7 +11,20 @@ from requests import RequestException
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
+try:
+    from .uk_weather_config import (
+        HOURLY_VARIABLES,
+        TIMEZONE,
+        UK_AVERAGE_CITY,
+        UK_CITIES,
+    )
+except ImportError:
+    from uk_weather_config import (
+        HOURLY_VARIABLES,
+        TIMEZONE,
+        UK_AVERAGE_CITY,
+        UK_CITIES,
+    )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -330,9 +343,10 @@ def export_window(df: pd.DataFrame, output_path: Path) -> None:
 
 def average_city_weather(df: pd.DataFrame, source: str) -> pd.DataFrame:
     averaged = (
-        df.groupby("timestamp", as_index=False)[HOURLY_VARIABLES]
+        df.groupby("timestamp")[HOURLY_VARIABLES]
         .mean()
         .round(3)
+        .reset_index()
     )
     averaged["city"] = UK_AVERAGE_CITY
     averaged["source"] = source
