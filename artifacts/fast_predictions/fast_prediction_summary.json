@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-20T05:37:32+00:00",
+  "generated_at": "2026-09-20T09:55:02+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -10,45 +10,45 @@
   ],
   "train_start": "2010-01-01 00:00:00",
   "train_end": "2026-06-30 23:00:00",
-  "latest_actual_demand": "2026-09-20 04:00:00",
-  "demand_data_lag_hours": 2,
-  "nowcast_gap_start": "2026-09-20 05:00:00",
-  "nowcast_gap_end": "2026-09-20 06:00:00",
+  "latest_actual_demand": "2026-09-20 07:00:00",
+  "demand_data_lag_hours": 3,
+  "nowcast_gap_start": "2026-09-20 08:00:00",
+  "nowcast_gap_end": "2026-09-20 10:00:00",
   "backfill_start": "2026-07-01 00:00:00",
-  "backfill_end": "2026-09-20 06:00:00",
-  "backfill_rows": 1951,
+  "backfill_end": "2026-09-20 10:00:00",
+  "backfill_rows": 1955,
   "backfill_skipped_rows": 0,
-  "forecast_start": "2026-09-20 07:00:00",
-  "forecast_end": "2026-09-27 06:00:00",
+  "forecast_start": "2026-09-20 11:00:00",
+  "forecast_end": "2026-09-27 10:00:00",
   "forecast_rows": 168,
   "forecast_skipped_rows": 0,
   "detailed_24h": {
     "component_rmse": {
-      "fast_xgboost": 1525.551962205217,
-      "lag_24h": 2399.4387174769968,
-      "lag_168h": 2496.4721802664926
+      "fast_xgboost": 1355.3748807750621,
+      "lag_24h": 2320.0447988063156,
+      "lag_168h": 2364.423947494105
     },
     "base_weights": {
-      "fast_xgboost": 0.445061904694543,
-      "lag_24h": 0.28296828631801074,
-      "lag_168h": 0.2719698089874462
+      "fast_xgboost": 0.4635125565401935,
+      "lag_24h": 0.270784976385646,
+      "lag_168h": 0.26570246707416045
     },
     "scoring_start": "2026-07-01 00:00:00",
-    "scoring_end": "2026-09-20 04:00:00",
-    "scoring_rows": 1949
+    "scoring_end": "2026-09-20 07:00:00",
+    "scoring_rows": 1952
   },
-  "elapsed_seconds": 35.03,
+  "elapsed_seconds": 96.07,
   "outputs": {
-    "backfill": "artifacts\\fast_predictions\\gap_fill_predictions.csv",
-    "legacy_backfill": "artifacts\\fast_predictions\\july_to_sept10_predictions.csv",
-    "current_forecast": "artifacts\\fast_predictions\\current_forecast.csv",
-    "detailed_24h_forecast": "artifacts\\fast_predictions\\detailed_weighted_24h_forecast.csv",
+    "backfill": "artifacts/fast_predictions/gap_fill_predictions.csv",
+    "legacy_backfill": "artifacts/fast_predictions/july_to_sept10_predictions.csv",
+    "current_forecast": "artifacts/fast_predictions/current_forecast.csv",
+    "detailed_24h_forecast": "artifacts/fast_predictions/detailed_weighted_24h_forecast.csv",
     "fast_horizon_forecasts": {
-      "24": "artifacts\\fast_predictions\\fast_forecast_24h.csv",
-      "48": "artifacts\\fast_predictions\\fast_forecast_48h.csv",
-      "72": "artifacts\\fast_predictions\\fast_forecast_72h.csv",
-      "168": "artifacts\\fast_predictions\\fast_forecast_168h.csv"
+      "24": "artifacts/fast_predictions/fast_forecast_24h.csv",
+      "48": "artifacts/fast_predictions/fast_forecast_48h.csv",
+      "72": "artifacts/fast_predictions/fast_forecast_72h.csv",
+      "168": "artifacts/fast_predictions/fast_forecast_168h.csv"
     },
-    "summary": "artifacts\\fast_predictions\\fast_prediction_summary.json"
+    "summary": "artifacts/fast_predictions/fast_prediction_summary.json"
   }
 }
