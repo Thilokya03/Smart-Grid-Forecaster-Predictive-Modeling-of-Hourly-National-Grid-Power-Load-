@@ -131,15 +131,15 @@ The project now includes a dashboard that separates public and admin concerns:
 The XGBoost validation curve is now display-ready through:
 
 ```text
-artifacts/xgboost/validation_predictions.csv
-artifacts/xgboost/validation_metrics.csv
-artifacts/xgboost/validation_metrics_by_fold.csv
+results/xgboost/validation_predictions.csv
+results/xgboost/validation_metrics.csv
+results/xgboost/validation_metrics_by_fold.csv
 ```
 
 Prophet tuned and DNN/LSTM still require exported row-level prediction CSVs for their admin visualizer curves:
 
 ```text
-artifacts/prophet_tuned/validation_predictions.csv
+results/prophet_tuned/validation_predictions.csv
 artifacts/dnn/dnn_outputs/dnn_predictions.csv
 ```
 
@@ -181,7 +181,7 @@ The DNN/LSTM candidate requires more work before final ranking. Its current resu
 1. Export DNN validation predictions in a PyTorch environment:
 
 ```text
-python ml_training/export_dnn_validation_predictions.py
+python models/lstm/export_dnn_validation_predictions.py
 ```
 
 Expected outputs:
@@ -190,7 +190,7 @@ Expected outputs:
 artifacts/dnn/dnn_outputs/dnn_predictions.csv
 artifacts/dnn/dnn_outputs/dnn_predictions_all_horizons.csv
 artifacts/dnn/dnn_outputs/dnn_metrics.json
-artifacts/dnn/dnn_outputs/dnn_model.pt
+artifacts/dnn/final/dnn_final_model.pt
 ```
 
 2. Export Prophet tuned validation predictions.
@@ -198,15 +198,15 @@ artifacts/dnn/dnn_outputs/dnn_model.pt
 The current local Prophet exporter exists but was too slow locally:
 
 ```text
-python ml_training/export_prophet_tuned_validation_predictions.py
+python models/prophet/export_prophet_tuned_validation_predictions.py
 ```
 
 Run it on Kaggle or a stronger machine, then copy the generated files to:
 
 ```text
-artifacts/prophet_tuned/validation_predictions.csv
-artifacts/prophet_tuned/validation_metrics.csv
-artifacts/prophet_tuned/validation_metrics_by_fold.csv
+results/prophet_tuned/validation_predictions.csv
+results/prophet_tuned/validation_metrics.csv
+results/prophet_tuned/validation_metrics_by_fold.csv
 ```
 
 3. Refresh the dashboard and confirm:

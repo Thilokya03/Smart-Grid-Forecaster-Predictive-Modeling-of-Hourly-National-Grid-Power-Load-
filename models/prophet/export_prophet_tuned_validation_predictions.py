@@ -1,3 +1,13 @@
+"""Export Prophet tuned predictions on the four shared chronological folds.
+
+SELECTION CAVEAT
+----------------
+This script only replays a configuration chosen elsewhere; it does not tune.
+If best_prophet_config.json was selected using these same Aug/Nov/Feb/May folds,
+the metrics written here are selection-biased and form an optimistic estimate,
+not a clean held-out score. Report them as screening numbers unless the tuning
+used an inner split that never touched these folds.
+"""
 from pathlib import Path
 import json
 
@@ -6,9 +16,9 @@ import pandas as pd
 from prophet import Prophet
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "prophet_tuned"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "prophet_tuned"
 CONFIG_PATH = OUTPUT_DIR / "prophet_outputs" / "best_prophet_config.json"
 
 PREDICTIONS_PATH = OUTPUT_DIR / "validation_predictions.csv"
@@ -27,14 +37,22 @@ SCREENING_FOLDS = [
 def calculate_metrics(actual: pd.Series, predicted: pd.Series) -> dict:
     actual = pd.Series(actual).reset_index(drop=True)
     predicted = pd.Series(predicted).reset_index(drop=True)
+    # Same MAPE and R2 definitions as every other model in this project: MAPE is
+    # averaged over non-zero actuals, and an undefined R2 is NaN, never 0.0.
     error = actual - predicted
+    nonzero = actual.abs() > 1e-8
+    mape = (
+        float((error[nonzero].abs() / actual[nonzero].abs()).mean() * 100)
+        if nonzero.any()
+        else float("nan")
+    )
     ss_res = (error**2).sum()
     ss_tot = ((actual - actual.mean()) ** 2).sum()
     return {
         "mae": float(error.abs().mean()),
         "rmse": float(np.sqrt((error**2).mean())),
-        "mape": float((error.abs() / actual.abs().clip(lower=1)).mean() * 100),
-        "r2": float(1 - (ss_res / ss_tot)) if ss_tot != 0 else 0.0,
+        "mape": mape,
+        "r2": float(1 - (ss_res / ss_tot)) if ss_tot != 0 else float("nan"),
     }
 
 

@@ -13,6 +13,6 @@ services:
       AUTO_PREDICTION_RUN_ON_START: ${AUTO_PREDICTION_RUN_ON_START:-false}
     volumes:
       - ./data:/app/data
-      - ./artifacts:/app/artifacts
+      - ./results:/app/results
       - ${USERPROFILE}/Downloads:/input/demand:ro
     restart: unless-stopped
