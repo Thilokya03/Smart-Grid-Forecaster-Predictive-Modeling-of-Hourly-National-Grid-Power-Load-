@@ -1,66 +1,82 @@
 {
-  "id": "50589d984a964821afb8e6206b9936ab",
-  "task": "update_all_live",
-  "label": "Update Demand + Weather + All Datasets",
-  "started_at": "2026-09-11T06:20:02+00:00",
-  "finished_at": "2026-09-11T06:20:34+00:00",
+  "id": "1414a502f2134788b4f6351e74bfc388",
+  "task": "refresh_latest_predictions",
+  "label": "Refresh Latest Predictions Now",
+  "started_at": "2026-09-20T05:36:37+00:00",
+  "finished_at": "2026-09-20T05:37:33+00:00",
   "status": "ok",
   "steps": [
     {
       "script": "uk_training_data_prep\\download_latest_neso_demand.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:02+00:00",
-      "optional": false,
+      "started_at": "2026-09-20T05:36:37+00:00",
+      "optional": true,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:10+00:00"
+      "finished_at": "2026-09-20T05:36:43+00:00"
     },
     {
       "script": "weather_pipeline\\api_weather.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:10+00:00",
+      "started_at": "2026-09-20T05:36:43+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:28+00:00"
+      "finished_at": "2026-09-20T05:36:45+00:00"
+    },
+    {
+      "script": "weather_pipeline\\repair_weather_gaps.py",
+      "status": "ok",
+      "started_at": "2026-09-20T05:36:45+00:00",
+      "optional": false,
+      "exit_code": 0,
+      "finished_at": "2026-09-20T05:36:46+00:00"
     },
     {
       "script": "uk_training_data_prep\\refresh_local_uk_features.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:28+00:00",
+      "started_at": "2026-09-20T05:36:46+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:28+00:00"
+      "finished_at": "2026-09-20T05:36:47+00:00"
     },
     {
       "script": "uk_training_data_prep\\build_weather_feature_data.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:28+00:00",
+      "started_at": "2026-09-20T05:36:47+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:29+00:00"
+      "finished_at": "2026-09-20T05:36:48+00:00"
     },
     {
       "script": "uk_training_data_prep\\build_hourly_load_data.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:29+00:00",
+      "started_at": "2026-09-20T05:36:48+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:31+00:00"
+      "finished_at": "2026-09-20T05:36:50+00:00"
     },
     {
       "script": "uk_training_data_prep\\build_master_training_data.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:31+00:00",
+      "started_at": "2026-09-20T05:36:50+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:33+00:00"
+      "finished_at": "2026-09-20T05:36:53+00:00"
     },
     {
       "script": "uk_training_data_prep\\build_forecast_feature_data.py",
       "status": "ok",
-      "started_at": "2026-09-11T06:20:33+00:00",
+      "started_at": "2026-09-20T05:36:53+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-09-11T06:20:34+00:00"
+      "finished_at": "2026-09-20T05:36:53+00:00"
+    },
+    {
+      "script": "ml_training\\fast_gap_fill_and_forecast.py",
+      "status": "ok",
+      "started_at": "2026-09-20T05:36:53+00:00",
+      "optional": false,
+      "exit_code": 0,
+      "finished_at": "2026-09-20T05:37:33+00:00"
     }
   ],
   "message": "All requested steps completed.",
