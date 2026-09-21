@@ -70,6 +70,9 @@ statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
 timesfm==2.0.2
+# GPU (CUDA 12.6) build: plain PyPI serves the CPU-only wheel, so install with
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu126
+# (use requirements-cpu.txt on machines without an NVIDIA GPU)
 torch==2.13.0
 tornado==6.5.8
 tqdm==4.69.0
