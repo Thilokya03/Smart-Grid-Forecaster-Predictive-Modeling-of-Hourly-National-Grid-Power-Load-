@@ -10,35 +10,52 @@ over non-zero actuals, NaN for an undefined R2) over the same population — one
 prediction per forecast origin per horizon, 649–721 windows x 24 horizons per
 fold — and aggregated as an unweighted mean of fold metrics.
 
-Both trained models early-stop on a 672-hour inner validation window that ends
-before each fold begins, so neither ever selects on the data it is scored on.
+Every trained model early-stops on a 672-hour inner validation window that ends
+before each fold begins, so none ever selects on the data it is scored on.
 TimesFM is zero-shot and does no selection at all.
 
 ## CV Leaderboard
 
-| Rank | Model | Mean MAE | Mean RMSE | Mean MAPE | Mean R2 | Trained? | Artifacts |
-|---:|---|---:|---:|---:|---:|---|---|
-| 1 | LSTM | **1245.31** | 1672.59 | 4.915% | 0.8396 | yes | `artifacts/dnn/dnn_outputs/` |
-| 2 | C11 Transformer | 1252.58 | 1687.67 | 4.872% | 0.8424 | yes | `results/c11_transformer/` |
-| 3 | TimesFM 2.5 | 1287.77 | 1780.74 | 5.040% | 0.8132 | no (zero-shot) | `results/timesfm_validation_metrics.csv` |
+TFT and LSTM+features additionally see calendar features (always known-future)
+and past weather (observed only in the arm below — see "Two arms" under Covariate
+Models). The other three see demand only. All five share the same folds, horizon,
+and scored population, so the ranking is valid; the **Inputs** column says why a
+lower rank might come from the extra information rather than the architecture.
 
-### Two findings
+| Rank | Model | Inputs | Mean MAE | Mean RMSE | Mean MAPE | Mean R2 | Trained? | Artifacts |
+|---:|---|---|---:|---:|---:|---:|---|---|
+| 1 | TFT | demand + calendar + past weather | **977.58** | 1325.54 | 3.809% | 0.9004 | yes | `results/tft/calendar_only/` |
+| 2 | LSTM+features | demand + calendar + past weather | 1220.01 | 1604.61 | 4.852% | 0.8497 | yes | `results/lstm_features/calendar_only/` |
+| 3 | LSTM | demand only | 1245.31 | 1672.59 | 4.915% | 0.8396 | yes | `artifacts/dnn/dnn_outputs/` |
+| 4 | C11 Transformer | demand only | 1252.58 | 1687.67 | 4.872% | 0.8424 | yes | `results/c11_transformer/` |
+| 5 | TimesFM 2.5 | demand only | 1287.77 | 1780.74 | 5.040% | 0.8132 | no (zero-shot) | `results/timesfm_validation_metrics.csv` |
 
-**The two trained architectures are indistinguishable.** They sit 7.27 MW apart
-— 0.58%. A single-layer LSTM with 64 hidden units and a two-layer Transformer
-encoder reach the same accuracy, and they split the metrics between them: the
-LSTM wins MAE and RMSE, the Transformer wins MAPE and R2. Adding architectural
-capacity to a demand-only sequence model does not help. The binding constraint is
-the **univariate 168h -> 24h formulation**, not the model. That is the case for
-testing an architecture that consumes covariates, and it now rests on evidence.
+### Three findings
+
+**The two demand-only trained architectures are indistinguishable.** LSTM and
+C11 Transformer sit 7.27 MW apart — 0.58%. A single-layer LSTM with 64 hidden
+units and a two-layer Transformer encoder reach the same accuracy, and they split
+the metrics between them: the LSTM wins MAE and RMSE, the Transformer wins MAPE
+and R2. Adding architectural capacity to a demand-only sequence model does not
+help. The binding constraint was the **univariate 168h -> 24h formulation**, not
+the model — this is what the covariate models below were built to test.
 
 **A pretrained model with no training is 3.4% behind.** TimesFM 2.5 was never
-fitted to UK demand, tuned, or early-stopped, yet trails the best trained model
-by 42.46 MW. It also wins `feb_2026` outright — the hardest fold for every model.
-For an operational setting where retraining is costly, that trade is worth
-stating explicitly.
+fitted to UK demand, tuned, or early-stopped, yet trails the best demand-only
+trained model by 42.46 MW. It also wins `feb_2026` outright — the hardest fold
+for every demand-only model. For an operational setting where retraining is
+costly, that trade is worth stating explicitly.
 
-No model dominates. Each of the four folds has a different winner:
+**Covariates help, but which architecture consumes them matters as much as
+having them.** TFT and LSTM+features see identical inputs (see Covariate Models
+below) and TFT still beats it by 242.43 MW — 19.9%. Handing an architecture
+covariates is not sufficient on its own; LSTM+features only edged out the
+demand-only LSTM by 2.0% despite a >30x larger input space (35 encoder channels
+vs 1), while TFT's variable-selection mechanism turned the same broad input space
+into a 21.5% gain over the same baseline. See Covariate Models for what made
+LSTM+features this close to demand-only at all.
+
+No demand-only model dominates. Each of the four folds has a different winner:
 
 | Fold | LSTM | Transformer | TimesFM | Best | Windows |
 |---|---:|---:|---:|---|---:|
@@ -48,6 +65,54 @@ No model dominates. Each of the four folds has a different winner:
 | may_2026 | 1222.39 | **1159.09** | 1273.62 | Transformer | 721 |
 
 February is the hardest fold for all three, by a clear margin.
+
+## Covariate Models
+
+TFT (`models/tft/tft_model.py`) and LSTM+features (`models/lstm/lstm_features_cv.py`)
+both see the same channels: calendar features (hour, day of week, month, holidays,
+`cal_*` flags) always sit in the known-future channel because they are knowable
+years ahead, matching the protocol above (shared folds, June excluded, 672-hour
+inner early stopping, train-only normalizers). LSTM+features additionally excludes
+the four `econ_*_lag1m` columns that TFT keeps — see "How These Figures Changed"
+below for why.
+
+**Two arms.** Both scripts support `--weather-future`:
+- `off` (default, **operational**): weather is observed-past only, comparable to
+  every model in the leaderboard above.
+- `on`: true weather for the forecast hours is also given to the model. An
+  **upper bound**, not an operational result — no forecaster has perfect weather.
+  Report either number with the arm named, never as "the TFT result" or "the
+  LSTM+features result".
+
+| Model | Arm | Mean MAE | Mean RMSE | Mean MAPE | Mean R2 | Artifacts |
+|---|---|---:|---:|---:|---:|---|
+| TFT | calendar_only (operational) | **977.58** | 1325.54 | 3.809% | 0.9004 | `results/tft/calendar_only/` |
+| TFT | with_weather (upper bound) | 652.81 | 879.18 | 2.498% | 0.9580 | `results/tft/with_weather/` |
+| LSTM+features | calendar_only (operational) | 1220.01 | 1604.61 | 4.852% | 0.8497 | `results/lstm_features/calendar_only/` |
+| LSTM+features | with_weather (upper bound) | not run | — | — | — | — |
+
+**Perfect-foresight weather is worth 33% of TFT's remaining error.** Going from
+observed-past to true future weather cuts TFT's MAE from 977.58 to 652.81. That
+gap is a ceiling on what a weather *forecast* (as opposed to weather truth) could
+buy an operational system — real value will sit somewhere between the two TFT
+rows, bounded above by 652.81 and below by 977.58.
+
+| Fold | TFT calendar_only | TFT with_weather | LSTM+features calendar_only |
+|---|---:|---:|---:|
+| aug_2025 | 838.53 | 495.92 | 1046.11 |
+| nov_2025 | 1049.08 | 721.38 | 1239.60 |
+| feb_2026 | 1109.68 | 768.78 | 1368.04 |
+| may_2026 | 913.03 | 625.17 | 1226.28 |
+
+**TFT does not suppress the `econ_*` columns either — it just tolerates them.**
+`results/tft/calendar_only/variable_importance.csv` ranks each `econ_*_lag1m`
+column 11th-30th of 33 encoder variables across the four folds, never bottom-3.
+TFT is not achieving its result by learning to ignore the same inputs that hurt
+LSTM+features; it integrates them at unremarkable, middling weight without the
+near-immediate overfit a plain concatenated LSTM head showed. The gap between
+the two architectures on identical inputs is about tolerance for marginal
+features under gradient descent, not TFT performing implicit feature selection
+that LSTM+features' `econ_*` exclusion crudely approximates by hand.
 
 ## How These Figures Changed
 
@@ -82,6 +147,19 @@ improvement looks like rather than noise. Early stopping now selects epochs 23,
 TimesFM is unaffected by either fix: with no training there is no leakage path
 and no epoch to select.
 
+**LSTM+features input hygiene.** First run used every TFT channel (including the
+four `econ_*_lag1m` columns) at `learning_rate=0.005`, inherited unchanged from
+the demand-only LSTM. Mean MAE was 1379.22 — *worse* than the demand-only LSTM's
+1245.31 despite the extra inputs — and early stopping fired within 1-10 epochs on
+every fold, evidence of near-immediate overfit. Two changes, decided together and
+run once rather than swept: dropped the `econ_*` columns (near-constant within a
+fold but trending across folds — a plain LSTM head has no mechanism to down-weight
+that the way TFT's variable selection does) and lowered `learning_rate` to 0.001
+(TFT's value; 0.005 was tuned for a 1-channel input, not 35). Result: mean MAE
+1220.01, early stopping now runs 13-24 epochs. Net **-159.21 MW (-11.5%)**, and it
+moved LSTM+features from worse-than-baseline to a genuine, if modest, 2.0% gain
+over the demand-only LSTM.
+
 ## Withdrawn Rows
 
 Previously listed with CV metrics, withdrawn because nothing in this repository
@@ -111,17 +189,21 @@ before PyTorch loads. Reruns will differ slightly despite `seed=42`. Given the
 LSTM and Transformer are 7.27 MW apart, their ranking is almost certainly within
 run-to-run variance and should not be presented as a decisive ordering.
 
-**Weather is used as perfect foresight** by the models that consume it. Prophet
-and XGBoost receive actual observed weather for the hours they are predicting,
-which no operational system would have. The three models above are univariate
-and unaffected.
+**Weather is used as perfect foresight** by the models that use it that way.
+Prophet and XGBoost receive actual observed weather for the hours they are
+predicting, which no operational system would have; TFT's and LSTM+features'
+`with_weather` arms do the same, deliberately, as a labelled upper bound (see
+Covariate Models). The three demand-only models and both `calendar_only` arms
+are unaffected.
 
 **Single-split experiments are not comparable.** `lstm_baseline_no_features.py`
 and `lstm_with_features.py` use their own 70/15/15 chronological tail, not the
-shared folds, and their numbers must not be placed in the leaderboard.
-`train_prophet_model.py` and `train_prophet_model_v2.py` previously trained on
-the locked June period; both now exclude it, so their earlier metrics (MAE 2908
-and 3005, both with negative R2) are void until regenerated.
+shared folds, and their numbers must not be placed in the leaderboard. Use
+`lstm_features_cv.py` instead for any covariate-LSTM number that needs to sit
+in this table. `train_prophet_model.py` and `train_prophet_model_v2.py`
+previously trained on the locked June period; both now exclude it, so their
+earlier metrics (MAE 2908 and 3005, both with negative R2) are void until
+regenerated.
 
 ## What Needs To Change
 
@@ -136,3 +218,9 @@ and 3005, both with negative R2) are void until regenerated.
    model that early-stopped on June itself and is void.
 7. Run the June 2026 final test exactly once, after the leaderboard is settled,
    via `models/lstm/final_dnn_june_and_forecast.py`.
+8. Run LSTM+features' `with_weather` arm so it has the same two-arm comparison
+   TFT already has, and the perfect-foresight gap can be compared across both
+   architectures, not just reported for TFT alone.
+9. Consider porting the same covariate treatment to the C11 Transformer. The
+   "architecture matters" finding above rests on two data points (TFT,
+   LSTM+features); a third would strengthen or weaken it.
