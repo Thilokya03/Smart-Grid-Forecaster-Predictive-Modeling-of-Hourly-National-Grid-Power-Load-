@@ -21,6 +21,7 @@ MODELS = {
     "lstm_features_cv": "models.lstm.lstm_features_cv",
     "xgboost": "models.xgboost.final_xgboost_june_and_forecast",
     "c11_transformer": "models.transformer.transformer_model",
+    "c11_transformer_features_cv": "models.transformer.transformer_features_cv",
     "timesfm": "models.timesfm.timesfm_model",
     "tft": "models.tft.tft_model",
     "ensemble": "models.ensemble.final_ensemble_june_and_forecast",
