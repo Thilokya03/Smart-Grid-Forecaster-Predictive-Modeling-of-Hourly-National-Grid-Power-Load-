@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+import os
+
 import pandas as pd
+
+# Every torch-based training script in this project imports this module before
+# running, so this is the one place that guarantees the env var is set before
+# any CUDA context exists. Without it, `torch.use_deterministic_algorithms`
+# (called with `warn_only=True` in each model's `set_seed`) silently falls
+# back to non-deterministic cuBLAS kernels instead of actually enforcing
+# determinism -- setting it late (e.g. inside `set_seed`, after `import
+# torch`) does not reliably help once a CUDA context may already exist.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 
 VALIDATION_FOLDS = (
