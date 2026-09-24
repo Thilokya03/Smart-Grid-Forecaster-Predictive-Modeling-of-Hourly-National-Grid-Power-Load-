@@ -23,7 +23,10 @@ VALIDATION_DAYS = 30
 COUNTRY_HOLIDAYS = "UK"
 
 REGRESSOR_COLUMNS = [
-    "temperature_2m",
+    # temperature_2m and apparent_temperature are correlated at r=0.985 (see
+    # docs/model_comparison_status.md item 10) -- keeping both let Prophet fit
+    # wildly unstable, opposite-signed coefficients that don't generalize.
+    # Keep apparent temperature: feels-like, drives heating/cooling response.
     "apparent_temperature",
     "relative_humidity_2m",
     "precipitation",

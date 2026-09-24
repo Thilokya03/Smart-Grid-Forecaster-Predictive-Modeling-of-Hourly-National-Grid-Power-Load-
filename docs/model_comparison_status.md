@@ -354,16 +354,18 @@ covariate-LSTM or covariate-Transformer number that needs to sit in this table.
 
 `train_prophet_model.py` and `train_prophet_model_v2.py` previously trained on
 the locked June period; both now exclude it and have been regenerated:
-`prophet_daily16_weekly10_cps010` scores MAE 2842.45, R2 -0.102; `prophet_v2_
-additive_cps050_sps15` scores MAE 2648.77, R2 0.0239. Both remain weak — every
-config either script swept (six total) landed at R2 between -0.12 and 0.02 —
-consistent in magnitude with the void pre-fix figures (2908 and 3005), so
-excluding June did not meaningfully change Prophet's single-split behaviour;
-these are the current honest numbers, not a bug in the rerun. Whether that
-weakness is inherent to Prophet's decomposition on this series or a
-configuration problem (see item 10 below) has not been investigated. Regardless
-of cause, per the horizon-count caveat above, no Prophet number belongs in the
-CV leaderboard table even once strong.
+`prophet_daily12_weekly8_cps005` scores MAE 2794.45, R2 -0.0496; `prophet_v2_
+additive_cps050_sps15` scores MAE 2601.44, R2 0.0803. Both remain weak. Item 10
+below found and fixed one real, confirmed bug (two collinear regressor pairs
+producing wildly unstable coefficients) — the numbers above are post-fix and a
+small improvement on the void pre-fix figures (2908 and 3005) and the
+pre-collinearity-fix rerun (2842.45/2648.77) — but the fix only closed a
+fraction of the gap: a large systematic positive bias (~1600-1900 MW) persists
+and is still unexplained. So Prophet's weakness is confirmed to be at least
+partly a fixable configuration problem, not purely inherent to the
+decomposition — but not fully explained either; see item 10 for what is still
+open. Regardless of cause, per the horizon-count caveat above, no Prophet
+number belongs in the CV leaderboard table even once strong.
 
 ## What Needs To Change
 
@@ -404,21 +406,76 @@ CV leaderboard table even once strong.
    non-determinism already noted above. Its `with_weather` `aug_2025` fold does
    not show the pattern, which is suggestive but not the same-config rerun this
    item actually needs.
-10. Investigate why Prophet's regenerated numbers stayed weak: check the
-    regressor list and Fourier orders swept in `train_prophet_model.py` /
-    `train_prophet_model_v2.py` against what the tuned Prophet script would have
-    searched (its config file is currently missing — item 3), rather than
-    assuming the architecture is simply unsuited to this series.
-11. Investigate why TimesFM+covariates loses to plain TimesFM on both arms,
-    rather than accepting "in-context regression is noisier" as verified fact —
-    it is currently a plausible hypothesis, not a tested one. Concretely: sweep
-    `ridge` upward from the current 1.0 (a higher penalty should shrink an
-    overfit per-window regression toward zero, moving both arms back toward
-    plain TimesFM's 1287.77 if the hypothesis is right), and try
-    `xreg_mode="timesfm + xreg"` (fit the regression on TimesFM's own residual
-    instead of on raw demand) as a second, architecturally different candidate.
-    Decide both changes before looking at either score, run once, matching the
-    LSTM+features ablation's own methodology above.
+10. ~~Investigate why Prophet's regenerated numbers stayed weak.~~ Done — found
+    a concrete, reproducible cause, fixed it, reran once, and it only
+    partially helped, which is itself the real finding.
+
+    **Diagnosis.** Both scripts' saved predictions carried a large systematic
+    bias, not just noisy shape: `train_prophet_model.py` ran **+2085 MW** high
+    on average, `train_prophet_model_v2.py` **+1752 MW** high — both despite a
+    decent shape correlation (r≈0.76) to actual demand, so this was a level
+    error, not a pattern-fitting failure. `regressor_coefficients()` on both
+    saved models showed why: `temperature_2m`/`apparent_temperature` are
+    correlated at r=0.985 in the training data (`rain`/`precipitation` at
+    r=0.993 in v1, which had both), and Prophet fit them wildly unstable,
+    opposite-signed, physically implausible coefficients — v1: `temperature_2m`
+    -2514 MW/unit vs `apparent_temperature` +1829 MW/unit; v2 (different
+    Fourier/changepoint grid): `temperature_2m` -2529 vs `apparent_temperature`
+    +1842, essentially identical to v1 despite the different hyperparameters —
+    ruling out "this config happened to be bad."
+
+    **Fix and rerun.** Dropped `temperature_2m` from both scripts (kept
+    `apparent_temperature`) and `rain` from v1 (kept `precipitation`), decided
+    before rerunning, each script run once:
+
+    | | v1 MAE | v1 bias | v1 R2 | v2 MAE | v2 bias | v2 R2 |
+    |---|---:|---:|---:|---:|---:|---:|
+    | Before | 2842.45 | +2085 MW | -0.102 | 2648.77 | +1752 MW | 0.0239 |
+    | After | **2794.45** | +1937 MW | -0.0496 | **2601.44** | +1615 MW | 0.0803 |
+    | Change | -1.7% | -148 MW | improved | -1.8% | -137 MW | improved |
+
+    The fix worked exactly as diagnosed at the coefficient level — v2's
+    `apparent_temperature` is now -223.57 MW/unit and `precipitation` +347.08,
+    physically sane magnitudes with no more wild opposite-signed swings, in
+    both scripts. But the effect on the headline numbers is small: MAE moved
+    under 2%, and the bias — the dominant driver of the poor R2 — is still
+    ~1600-1900 MW, barely dented. **Multicollinearity was a real, confirmed
+    bug, and fixing it measurably helped, but it was not the dominant cause of
+    Prophet's weakness.** Something else is responsible for most of the
+    persistent large positive bias (candidates, not yet tested: trend
+    extrapolation over the 30-day holdout, or the calendar/holiday regressors
+    — `is_holiday`, `cal_is_non_working_day`, `cal_is_covid_lockdown` — which
+    also show large, possibly unstable coefficients alongside Prophet's own
+    built-in country-holidays component).
+11. ~~Investigate why TimesFM+covariates loses to plain TimesFM.~~ Done — two
+    candidates, decided before either was run, both on `calendar_only`:
+    `ridge=10.0` (default `xreg_mode`) and `xreg_mode="timesfm + xreg"`
+    (default `ridge=1.0`), each run once, no further iteration.
+
+    | Config | Mean MAE | Mean RMSE | vs. baseline (1580.81) |
+    |---|---:|---:|---|
+    | Baseline (`ridge=1.0`, `xreg + timesfm`) | 1580.81 | 2122.16 | — |
+    | `ridge=10.0` | **1553.12** | 2083.80 | -1.8% (small improvement) |
+    | `xreg_mode="timesfm + xreg"` | 2414.63 | 3357.31 | +52.7% (much worse) |
+
+    `ridge=10.0` moved in the hypothesized direction — a stronger penalty
+    shrinks the noisy per-window regression and helps a little — but the
+    improvement is small and leaves a 265 MW gap to plain zero-shot TimesFM's
+    1287.77, so "in-context regression is noisier than a globally-trained one"
+    is now a supported explanation, not the whole story: ridge alone does not
+    close the gap.
+
+    `xreg_mode="timesfm + xreg"` made every fold worse, `may_2026` badly
+    (R2=-0.5421, worse than predicting the mean). This mode fits the
+    regression on TimesFM's own zero-shot residual rather than on raw demand;
+    the residual is presumably a much noisier, lower-signal target for a
+    168-hour in-context linear fit than raw demand is, so the regression adds
+    variance instead of removing it. Unverified, and not investigated further
+    per the run-once methodology — a candidate follow-up, not done here.
+
+    Not run: `with_weather`, and no combination of the two changes — out of
+    scope for this decided pair. `results/timesfm_covariates/calendar_only_ridge10/`
+    and `results/timesfm_covariates/calendar_only_residual_xreg/`.
 12. Explain the `with_weather` fold reversal (`aug_2025`/`may_2026` lose to
     `calendar_only` despite `with_weather` giving strictly more information):
     check whether those two folds' weather covariates are more collinear or
