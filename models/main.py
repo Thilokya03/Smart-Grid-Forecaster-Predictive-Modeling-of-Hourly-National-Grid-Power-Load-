@@ -18,9 +18,12 @@ MODELS = {
     "lstm": "models.lstm.lstm_model",
     "lstm_baseline": "models.lstm.lstm_baseline_no_features",
     "lstm_features": "models.lstm.lstm_with_features",
+    "lstm_features_cv": "models.lstm.lstm_features_cv",
     "xgboost": "models.xgboost.final_xgboost_june_and_forecast",
     "c11_transformer": "models.transformer.transformer_model",
+    "c11_transformer_features_cv": "models.transformer.transformer_features_cv",
     "timesfm": "models.timesfm.timesfm_model",
+    "timesfm_covariates_cv": "models.timesfm.timesfm_covariates_cv",
     "tft": "models.tft.tft_model",
     "ensemble": "models.ensemble.final_ensemble_june_and_forecast",
 }

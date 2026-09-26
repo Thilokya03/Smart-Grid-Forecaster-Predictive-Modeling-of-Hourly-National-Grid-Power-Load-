@@ -40,8 +40,14 @@ def load_timesfm_model(
     batch_size: int = 32,
     local_files_only: bool = False,
     torch_compile: bool = False,
+    return_backcast: bool = False,
 ) -> Any:
-    """Download/load and compile the pretrained TimesFM 2.5 PyTorch model."""
+    """Download/load and compile the pretrained TimesFM 2.5 PyTorch model.
+
+    `return_backcast` must be True for `model.forecast_with_covariates` (used
+    by `timesfm_covariates_cv.py`) -- it raises otherwise. Off by default so
+    this plain zero-shot pipeline's behaviour is unchanged.
+    """
     try:
         import timesfm
         import torch
@@ -74,6 +80,7 @@ def load_timesfm_model(
             force_flip_invariance=True,
             infer_is_positive=True,
             fix_quantile_crossing=True,
+            return_backcast=return_backcast,
         )
     )
     return model

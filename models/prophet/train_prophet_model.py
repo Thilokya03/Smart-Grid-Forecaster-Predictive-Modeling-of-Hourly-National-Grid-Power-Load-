@@ -22,6 +22,17 @@ VALIDATION_DAYS = 30
 COUNTRY_HOLIDAYS = "UK"
 
 REGRESSOR_COLUMNS = [
+    # temperature_2m and apparent_temperature are correlated at r=0.985, and
+    # precipitation/rain at r=0.993 (see docs/model_comparison_status.md item
+    # 10) -- keeping both members of either pair let Prophet fit wildly
+    # unstable, opposite-signed coefficients that don't generalize. Keep the
+    # more directly demand-relevant variable from each pair: apparent
+    # temperature (feels-like, drives heating/cooling response) over raw
+    # temperature, and precipitation (the standard, broader variable) over
+    # rain (a subset of it).
+    "relative_humidity_2m",
+    "apparent_temperature",
+    "precipitation",
     "temperature_2m",
     "relative_humidity_2m",
     "apparent_temperature",

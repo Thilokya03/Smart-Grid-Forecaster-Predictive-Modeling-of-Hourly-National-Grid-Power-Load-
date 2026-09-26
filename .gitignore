@@ -54,3 +54,8 @@ desktop.ini
 results/*
 !results/fast_predictions/
 !results/fast_predictions/**
+
+# Tracked processed dataset for model training/submission
+!data/processed/master_training_data.csv
+
+.claude/
