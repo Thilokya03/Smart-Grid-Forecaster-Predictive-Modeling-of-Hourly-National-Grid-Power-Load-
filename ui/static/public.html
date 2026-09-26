@@ -3,139 +3,116 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#167363">
   <title>UK Smart Grid Forecast</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v16">
+  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v17">
+  <link rel="stylesheet" href="/static/public.css?v=2026-09-10-public-v18">
 </head>
 <body class="public-page">
+  <a class="skip-link" href="#main">Skip to forecast</a>
   <div class="public-shell">
     <header class="public-topbar">
-      <a class="brand-mark" href="/">UK Smart Grid Forecast</a>
-      <nav class="public-nav">
+      <a class="brand-mark" href="/"><img src="/static/icons/zap.svg" alt="" width="22" height="22">UK Smart Grid <span>Forecast</span></a>
+      <nav class="public-nav" aria-label="Main navigation">
         <a href="/" data-page-link="overview">Overview</a>
-        <a href="/forecast" data-page-link="forecast">Forecast</a>
+        <a href="/forecast" data-page-link="forecast">Explore forecast</a>
         <a href="/forecast/detailed" data-page-link="detailed">Detailed 24h</a>
-        <a href="/forecast/inputs" data-page-link="inputs">Inputs</a>
+        <a href="/forecast/inputs" data-page-link="inputs">Data &amp; context</a>
         <a href="/settings" data-page-link="settings">Settings</a>
-        <button data-signin="admin">Admin</button>
-        <button data-signin="super-admin">Super Admin</button>
       </nav>
+      <button id="quickTheme" class="icon-button" title="Switch to dark theme" aria-label="Switch to dark theme"><img src="/static/icons/moon.svg" alt=""></button>
     </header>
 
-    <main class="public-main">
-      <section class="public-hero" id="overview" data-public-section="overview forecast">
-        <div class="public-hero-copy">
-          <span class="status-chip">Live forecast view</span>
-          <h1>UK electricity demand forecast</h1>
-          <p>Hourly demand outlook for planning, monitoring, and quick operational awareness across Great Britain.</p>
-        </div>
-        <div id="forecastKpis" class="grid public-kpis"></div>
+    <main class="public-main" id="main">
+      <div class="page-heading">
+        <div><p class="eyebrow">GREAT BRITAIN / DEMAND OUTLOOK</p><h1 id="pageTitle">UK electricity demand</h1><p id="pageDescription">A closer look at the hours ahead.</p></div>
+        <div class="heading-actions"><span class="clock-label">UK forecast time</span><button id="refreshForecast" class="icon-button" aria-label="Refresh published forecast" title="Refresh published forecast"><img src="/static/icons/refresh-cw.svg" alt=""></button></div>
+      </div>
+      <div id="loadErrors" class="load-errors" role="alert" hidden></div>
+      <div id="freshnessStrip" class="freshness-strip" role="status">Checking the published forecast...</div>
+
+      <section class="snapshot-section" data-public-section="overview forecast" aria-label="Forecast at a glance">
+        <div id="forecastKpis" class="public-kpis" aria-live="polite"><p class="empty-state">Loading demand outlook...</p></div>
       </section>
 
-      <section class="forecast-panel" data-public-section="overview forecast">
-        <h3>Fast Forecast</h3>
-        <div class="toolbar">
-          <button data-horizon="24" class="active">24h</button>
-          <button data-horizon="48">48h</button>
-          <button data-horizon="72">72h</button>
-          <button data-horizon="168">168h</button>
+      <section class="forecast-panel" data-public-section="overview forecast" aria-labelledby="explorerTitle">
+        <div class="section-heading"><div><p class="eyebrow">THE BIG PICTURE</p><h2 id="explorerTitle">Demand explorer</h2></div>
+          <div class="segmented" aria-label="Forecast horizon"><button data-horizon="24">24 hours</button><button data-horizon="48">48 hours</button><button data-horizon="72">72 hours</button><button data-horizon="168">7 days</button></div>
         </div>
         <p id="forecastMessage" class="section-note"></p>
-        <div class="chart-card"><h4>Predicted Demand</h4><div id="forecastChart"></div></div>
-        <h4>Daily Outlook</h4>
-        <div id="outlookGrid" class="outlook-grid"></div>
-        <div id="forecastTableSection">
-          <h4>Hourly Table</h4>
-          <div class="table-wrap"><table id="forecastTable"></table></div>
+        <div class="explorer-toolbar">
+          <div class="segmented view-tabs" role="tablist" aria-label="Forecast view">
+            <button id="tab-curve" data-view="curve" role="tab" aria-controls="view-curve"><img src="/static/icons/chart-no-axes-combined.svg" alt="">Curve</button>
+            <button id="tab-heatmap" data-view="heatmap" role="tab" aria-controls="view-heatmap"><img src="/static/icons/grid-3x3.svg" alt="">Hour map</button>
+            <button id="tab-table" data-view="table" role="tab" aria-controls="view-table"><img src="/static/icons/table-2.svg" alt="">Data</button>
+          </div>
+          <div class="explorer-filters"><label>Day <select id="dayFilter"><option value="all">All available days</option></select></label><label>Average by <select id="chunkSize"><option value="1">Hour</option><option value="3">3-hour block</option><option value="6">6-hour block</option></select></label><button id="downloadForecast" class="icon-button" title="Download selected hourly data (CSV)" aria-label="Download selected hourly data as CSV"><img src="/static/icons/download.svg" alt=""></button></div>
         </div>
+        <div class="explorer-content">
+          <div class="explorer-visual">
+            <div id="view-curve" role="tabpanel" aria-labelledby="tab-curve"><div id="forecastChart"></div><p class="section-note" id="chartCaption"></p></div>
+            <div id="view-heatmap" role="tabpanel" aria-labelledby="tab-heatmap" hidden><div class="heatmap-scroll"><div id="demandHeatmap"></div></div><p class="heatmap-legend"><span class="legend-low">Lower</span><span class="legend-middle">Middle</span><span class="legend-high">Higher</span> Within this horizon, not grid stress levels. Blank = no forecast.</p></div>
+            <div id="view-table" role="tabpanel" aria-labelledby="tab-table" hidden><div class="table-wrap"><table id="forecastTable"></table></div><div class="pagination"><span id="tableCount"></span><div><button id="previousRows" class="icon-button" aria-label="Previous rows" title="Previous rows"><img src="/static/icons/chevron-left.svg" alt=""></button><button id="nextRows" class="icon-button" aria-label="Next rows" title="Next rows"><img src="/static/icons/chevron-right.svg" alt=""></button></div></div></div>
+          </div>
+          <aside class="hour-inspector" aria-label="Selected forecast period"><p class="eyebrow">IN FOCUS</p><div id="hourDetails" aria-live="polite"><p>Select a forecast period.</p></div></aside>
+        </div>
+        <h3 class="daily-heading">Daily breakdown</h3>
+        <div id="outlookGrid" class="outlook-grid" aria-label="Filter by day"></div>
       </section>
 
-      <section id="detailed" data-public-section="overview detailed">
-        <h3>Detailed 24h Forecast</h3>
+      <section class="planning-section" data-public-section="overview forecast" aria-labelledby="plannerTitle">
+        <div class="section-heading"><div><p class="eyebrow">LOOK A LITTLE CLOSER</p><h2 id="plannerTitle">Find a lower-demand window</h2></div><label class="duration-control">Duration <select id="plannerDuration"><option value="1">1 hour</option><option value="2" selected>2 hours</option><option value="3">3 hours</option><option value="4">4 hours</option><option value="6">6 hours</option></select></label></div>
+        <div id="plannerResults" class="planner-results" aria-live="polite"></div>
+        <p class="section-note">Based on national demand within the selected day and horizon, using hours that have not started. Lower demand does not necessarily mean a lower tariff or lower carbon emissions. Follow your tariff and appliance safety guidance.</p>
+      </section>
+
+      <section class="insight-section" data-public-section="overview forecast" aria-labelledby="insightsTitle">
+        <div class="section-heading"><div><p class="eyebrow">FROM THE NUMBERS</p><h2 id="insightsTitle">What stands out</h2></div><span class="subtle" id="insightScope"></span></div>
+        <div id="insightGrid" class="insight-grid"></div>
+      </section>
+
+      <section id="detailed" data-public-section="detailed" aria-labelledby="detailedTitle">
+        <div class="section-heading"><div><p class="eyebrow">AN ALTERNATIVE OUTLOOK</p><h2 id="detailedTitle">Weighted 24-hour forecast</h2></div></div>
+        <p class="section-note">This estimate blends the fast forecast with demand patterns from one day and one week earlier. A different estimate is not a guarantee of greater accuracy.</p>
         <div id="detailedKpis" class="grid"></div>
-        <div class="chart-card"><h4>Weighted 24h Demand</h4><div id="detailedChart"></div></div>
-        <div id="detailedComponentsSection">
-          <h4>Weighted Components</h4>
-          <div class="table-wrap"><table id="detailedTable"></table></div>
+        <div id="detailedChart"></div>
+        <div id="detailedComponentsSection"><h3>Hourly estimates</h3><div class="table-wrap"><table id="detailedTable"></table></div></div>
+      </section>
+
+      <section data-public-section="overview inputs" aria-labelledby="contextTitle">
+        <div class="section-heading"><div><p class="eyebrow">BEHIND THE OUTLOOK</p><h2 id="contextTitle">Data &amp; confidence</h2></div><a class="text-link" href="/forecast/inputs" data-public-section="overview">More context <span aria-hidden="true">&rarr;</span></a></div>
+        <div id="inputKpis" class="context-grid"></div>
+        <div id="weatherContext" data-public-section="inputs"></div>
+      </section>
+
+      <section data-public-section="overview inputs" class="reading-section" aria-labelledby="readingTitle">
+        <div><p class="eyebrow">A LITTLE CONTEXT</p><h2 id="readingTitle">Understanding the forecast</h2><p class="section-note">National patterns. Hourly detail.<br>Estimates, with their limits in view.</p></div>
+        <div class="reading-questions">
+          <details><summary>What do MW and GW tell me?</summary><p>These measure power: how much electricity the country is expected to need at a given time. 1 GW equals 1,000 MW. A block average describes the demand across its available hours, not the total electricity consumed.</p></details>
+          <details><summary>What could I do with a lower-demand window?</summary><p>For a flexible activity, it is a starting point for comparing possible times. The suggested window has the lowest average predicted national demand among the complete upcoming windows in your selection. It does not predict your home's usage, electricity price, or available local network capacity.</p></details>
+          <details><summary>Why can actual demand be behind the forecast?</summary><p>Source readings arrive after the period they describe. When there is a gap, the pipeline estimates the missing demand before producing the forecast. These nowcast values are estimates, not new NESO observations. New data can change the next published forecast.</p></details>
+          <details><summary>How certain is the outlook?</summary><p>Weather, behaviour, and unexpected events can change demand. The line is a point estimate; this publication does not provide calibrated uncertainty intervals. Longer horizons and gaps in observed demand deserve more caution. Higher demand here does not by itself indicate a shortage.</p></details>
         </div>
       </section>
 
-      <section id="insights" class="insight-section" data-public-section="overview inputs">
-        <h3>Forecast Notes</h3>
-        <div id="insightGrid" class="quote-grid"></div>
-      </section>
-
-      <section id="inputs" data-public-section="overview inputs">
-        <h3>Input Status</h3>
-        <div id="inputKpis" class="grid"></div>
-      </section>
-
-      <section id="events" data-public-section="inputs">
-        <h3>Recent Events</h3>
-        <div id="eventList" class="event-list"></div>
-      </section>
-
-      <section id="settings" class="settings-panel" data-public-section="settings">
-        <h3>Settings</h3>
+      <section id="settings" class="settings-panel" data-public-section="settings" aria-labelledby="settingsTitle">
+        <h2 id="settingsTitle">Your dashboard preferences</h2>
         <div class="settings-grid">
-          <label>
-            <span>Default Horizon</span>
-            <select id="settingDefaultHorizon">
-              <option value="24">24 hours</option>
-              <option value="48">48 hours</option>
-              <option value="72">72 hours</option>
-              <option value="168">168 hours</option>
-            </select>
-          </label>
-          <label>
-            <span>Demand Units</span>
-            <select id="settingUnit">
-              <option value="mw">MW</option>
-              <option value="gw">GW</option>
-            </select>
-          </label>
-          <label>
-            <span>Theme</span>
-            <select id="settingTheme">
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          <label>
-            <span>Accent Colour</span>
-            <select id="settingAccent">
-              <option value="green">Racing green</option>
-              <option value="burgundy">Burgundy</option>
-              <option value="navy">Navy</option>
-              <option value="brass">Brass</option>
-              <option value="custom">Custom colour</option>
-            </select>
-          </label>
-          <label>
-            <span>Custom Accent</span>
-            <input id="settingCustomAccent" type="color" value="#0b5d4b">
-          </label>
-          <label>
-            <span>Dashboard Tone</span>
-            <select id="settingTone">
-              <option value="stone">Warm stone</option>
-              <option value="mist">Cool mist</option>
-              <option value="paper">Paper white</option>
-              <option value="night">Night blue</option>
-            </select>
-          </label>
-          <label class="check-setting">
-            <input id="settingCompactRows" type="checkbox">
-            <span>Compact hourly table</span>
-          </label>
-          <label class="check-setting">
-            <input id="settingShowComponents" type="checkbox">
-            <span>Show weighted components</span>
-          </label>
+          <label><span>Default horizon</span><select id="settingDefaultHorizon"><option value="24">24 hours</option><option value="48">48 hours</option><option value="72">72 hours</option><option value="168">7 days</option></select></label>
+          <label><span>Demand units</span><select id="settingUnit"><option value="mw">MW</option><option value="gw">GW</option></select></label>
+          <label><span>Theme</span><select id="settingTheme"><option value="light">Light</option><option value="dark">Dark</option><option value="custom">Custom</option></select></label>
+          <label><span>Accent colour</span><select id="settingAccent"><option value="green">Forest green</option><option value="burgundy">Rosewood</option><option value="navy">Ink blue</option><option value="brass">Golden olive</option><option value="custom">Custom colour</option></select></label>
+          <label><span>Custom accent</span><input id="settingCustomAccent" type="color" value="#167363"></label>
+          <label><span>Dashboard tone</span><select id="settingTone"><option value="mist">Cool mist</option><option value="paper">Paper white</option><option value="stone">Soft stone</option><option value="night">Graphite</option></select></label>
+          <label class="check-setting"><input id="settingCompactRows" type="checkbox"><span>Compact data table</span></label>
+          <label class="check-setting"><input id="settingShowComponents" type="checkbox"><span>Show weighted components</span></label>
         </div>
       </section>
+      <noscript><p>JavaScript is required to display the hourly forecast and interactive views.</p></noscript>
     </main>
+    <footer class="public-footer"><div><strong>UK Smart Grid Forecast</strong><span>Great Britain electricity demand / Research forecast</span></div><div><span id="checkedAt"></span><button data-signin="admin">Admin sign in</button><button data-signin="super-admin">Super admin sign in</button></div></footer>
   </div>
-  <script src="/static/public_forecast.js?v=2026-08-20-ui-v16"></script>
+  <script src="/static/forecast_explorer.js?v=2026-09-10-public-v18"></script>
+  <script src="/static/public_forecast.js?v=2026-09-10-public-v18"></script>
 </body>
 </html>

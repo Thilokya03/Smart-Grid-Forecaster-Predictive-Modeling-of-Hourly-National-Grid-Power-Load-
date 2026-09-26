@@ -12,8 +12,11 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 import pandas as pd
+from ui.pipeline_health import pipeline_health, read_report, write_report, utc_now
+from uk_training_data_prep.database import database_enabled, read_dataframe
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,8 +25,17 @@ PORT = int(os.environ.get("PORT", "8765"))
 AUTO_PREDICTIONS_ENABLED = os.environ.get("AUTO_PREDICTIONS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 AUTO_PREDICTION_INTERVAL_HOURS = int(os.environ.get("AUTO_PREDICTION_INTERVAL_HOURS", "6"))
 AUTO_PREDICTION_RUN_ON_START = os.environ.get("AUTO_PREDICTION_RUN_ON_START", "").strip().lower() in {"1", "true", "yes", "on"}
-DASHBOARD_VERSION = "2026-08-20-ui-v15"
+DASHBOARD_VERSION = "2026-09-20-ui-v19-super-admin-health"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+def first_existing_path(*paths: Path) -> Path:
+    for path in paths:
+        candidate = path if path.is_absolute() else PROJECT_ROOT / path
+        if candidate.exists():
+            return candidate
+    return paths[0]
+
 
 MASTER_PATH = Path("data") / "processed" / "master_training_data.csv"
 WEATHER_FORECAST_PATH = Path("data") / "weather_runtime" / "rolling_forecast_weather.csv"
@@ -31,11 +43,24 @@ FORECAST_FEATURE_PATH = Path("data") / "processed" / "forecast_feature_data.csv"
 HOLIDAYS_PATH = Path("data") / "external" / "uk_features" / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = Path("data") / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
 DOWNLOADS_DIR = Path.home() / "Downloads"
-PROPHET_TUNED_DIR = Path("results") / "prophet_tuned" / "prophet_outputs"
-XGBOOST_DIR = Path("results") / "xgboost"
+PROPHET_TUNED_DIR = first_existing_path(
+    Path("results") / "prophet_tuned" / "prophet_outputs",
+    Path("artifacts") / "prophet_tuned" / "prophet_outputs",
+)
+XGBOOST_DIR = first_existing_path(
+    Path("results") / "xgboost",
+    Path("artifacts") / "xgboost",
+)
 XGBOOST_OUTPUT_DIR = XGBOOST_DIR / "xgboost_outputs"
-SARIMAX_OUTPUT_DIR = Path("results") / "sarimax" / "sarimax_outputs"
-DNN_OUTPUT_DIR = Path("artifacts") / "dnn" / "dnn_outputs"
+SARIMAX_OUTPUT_DIR = first_existing_path(
+    Path("results") / "sarimax" / "sarimax_outputs",
+    Path("artifacts") / "sarimax" / "sarimax_outputs",
+)
+DNN_OUTPUT_DIR = first_existing_path(
+    Path("results") / "dnn" / "dnn_outputs",
+    Path("artifacts") / "dnn" / "dnn_outputs",
+    Path("artifacts") / "DNN" / "dnn_outputs",
+)
 FAST_PREDICTION_DIR = Path("results") / "fast_predictions"
 FAST_FORECAST_PATH = FAST_PREDICTION_DIR / "current_forecast.csv"
 FAST_BACKFILL_PATH = FAST_PREDICTION_DIR / "gap_fill_predictions.csv"
@@ -49,10 +74,22 @@ FAST_HORIZON_FORECAST_PATHS = {
 }
 
 NOTEBOOK_SOURCES = {
-    "prophet_training": DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
-    "prophet_tuning": DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
-    "xgboost_comparison": DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
-    "dnn_forecasting": DOWNLOADS_DIR / "DNN_Forecasting.ipynb",
+    "prophet_training": first_existing_path(
+        DOWNLOADS_DIR / "prophet-model-training-updated.ipynb",
+        Path("artifacts") / "prophet_tuned" / "prophet-model-training-updated.ipynb",
+    ),
+    "prophet_tuning": first_existing_path(
+        DOWNLOADS_DIR / "prophet-tuning-resume-after-timeout (1).ipynb",
+        Path("artifacts") / "prophet_tuned" / "prophet-tuning-resume-after-timeout.ipynb",
+    ),
+    "xgboost_comparison": first_existing_path(
+        DOWNLOADS_DIR / "xgboost-run-and-comparison-with-prophet (1).ipynb",
+        Path("artifacts") / "xgboost" / "xgboost-run-and-comparison-with-prophet.ipynb",
+    ),
+    "dnn_forecasting": first_existing_path(
+        DOWNLOADS_DIR / "DNN_Forecasting.ipynb",
+        Path("artifacts") / "DNN" / "DNN_Forecasting.ipynb",
+    ),
 }
 
 DATASETS = [
@@ -84,7 +121,7 @@ ARTIFACTS = [
     ("SARIMAX CV folds", SARIMAX_OUTPUT_DIR / "sarimax_cv_folds.csv"),
     ("SARIMAX CV predictions", SARIMAX_OUTPUT_DIR / "sarimax_cv_predictions.csv"),
     ("SARIMAX order", SARIMAX_OUTPUT_DIR / "sarimax_order.json"),
-    ("DNN/LSTM notebook", DOWNLOADS_DIR / "DNN_Forecasting.ipynb"),
+    ("DNN/LSTM notebook", NOTEBOOK_SOURCES["dnn_forecasting"]),
     ("DNN/LSTM exported metrics", DNN_OUTPUT_DIR / "dnn_metrics.json"),
     ("DNN/LSTM exported predictions", DNN_OUTPUT_DIR / "dnn_predictions.csv"),
     ("Fast gap-fill predictions", FAST_BACKFILL_PATH),
@@ -133,6 +170,7 @@ TASKS = {
         [
             (Path("uk_training_data_prep") / "download_latest_neso_demand.py", True),
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "refresh_local_uk_features.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_hourly_load_data.py", False),
@@ -149,7 +187,13 @@ TASKS = {
             (Path("uk_training_data_prep") / "build_forecast_feature_data.py", False),
         ],
     ),
-    "build_weather": ("Build Combined Weather", [(Path("uk_training_data_prep") / "build_weather_feature_data.py", False)]),
+    "build_weather": (
+        "Repair + Build Combined Weather",
+        [
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
+            (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
+        ],
+    ),
     "build_load": ("Build Hourly Demand", [(Path("uk_training_data_prep") / "build_hourly_load_data.py", False)]),
     "update_demand": (
         "Update NESO Demand + Rebuild Master",
@@ -169,6 +213,7 @@ TASKS = {
         "Update Weather + Forecast Inputs",
         [
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_forecast_feature_data.py", False),
         ],
@@ -178,6 +223,7 @@ TASKS = {
         [
             (Path("uk_training_data_prep") / "download_latest_neso_demand.py", False),
             (Path("weather_pipeline") / "api_weather.py", False),
+            (Path("weather_pipeline") / "repair_weather_gaps.py", False),
             (Path("uk_training_data_prep") / "refresh_local_uk_features.py", False),
             (Path("uk_training_data_prep") / "build_weather_feature_data.py", False),
             (Path("uk_training_data_prep") / "build_hourly_load_data.py", False),
@@ -223,6 +269,7 @@ ADMIN_API_PATHS = {
     "/api/v1/forecast/ml/comparison",
 }
 SUPER_ADMIN_API_PATHS = {
+    "/api/pipeline-health",
     "/api/summary",
     "/api/kpis",
     "/api/timeseries",
@@ -230,9 +277,21 @@ SUPER_ADMIN_API_PATHS = {
     "/api/last-output",
 }
 TASK_LOCK = threading.Lock()
+MASTER_CACHE_LOCK = threading.Lock()
+MASTER_CACHE: dict[str, object] = {
+    "path": None,
+    "mtime": None,
+    "loaded_at": 0.0,
+    "frame": pd.DataFrame(),
+}
+DATABASE_CACHE_SECONDS = 60
 
 def project_path(relative_path: Path) -> Path:
-    return PROJECT_ROOT / relative_path
+    candidate = PROJECT_ROOT / relative_path
+    if candidate.exists() or not relative_path.parts or relative_path.parts[0] != "results":
+        return candidate
+    legacy = PROJECT_ROOT / "artifacts" / Path(*relative_path.parts[1:])
+    return legacy if legacy.exists() else candidate
 
 
 def format_size(size_bytes: int) -> str:
@@ -311,32 +370,80 @@ def load_metrics_file(relative_path: Path) -> dict:
         return json.load(file)
 
 
+def load_database_frame(
+    table_name: str,
+    *,
+    filters: dict[str, object] | None = None,
+    order_by: tuple[str, ...] = (),
+) -> pd.DataFrame | None:
+    if not database_enabled():
+        return None
+    try:
+        return read_dataframe(table_name, filters=filters, order_by=order_by)
+    except Exception as exc:
+        print(f"Database read failed for {table_name}; using CSV fallback: {exc}")
+        return None
+
+
 def load_master() -> pd.DataFrame:
     path = project_path(MASTER_PATH)
-    if not path.exists():
+    use_database = database_enabled()
+    if not use_database and not path.exists():
         return pd.DataFrame()
 
-    frame = pd.read_csv(path, low_memory=False)
-    frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
-    frame = frame.dropna(subset=["timestamp", "demand_mw"]).sort_values("timestamp").reset_index(drop=True)
+    mtime = path.stat().st_mtime if path.exists() else None
+    with MASTER_CACHE_LOCK:
+        database_cache_valid = (
+            use_database
+            and MASTER_CACHE["path"] == "database:master_training_data"
+            and time.time() - float(MASTER_CACHE["loaded_at"]) < DATABASE_CACHE_SECONDS
+        )
+        csv_cache_valid = (
+            not use_database
+            and MASTER_CACHE["path"] == path
+            and MASTER_CACHE["mtime"] == mtime
+        )
+        if database_cache_valid or csv_cache_valid:
+            return MASTER_CACHE["frame"].copy()
 
-    numeric_columns = [
-        "demand_mw",
-        "temperature_2m",
-        "apparent_temperature",
-        "relative_humidity_2m",
-        "precipitation",
-        "cloud_cover",
-        "wind_speed_10m",
-        "shortwave_radiation",
-        "is_holiday",
-        "cal_is_event_day",
-        "cal_is_non_working_day",
-    ]
-    for column in numeric_columns:
-        if column in frame.columns:
-            frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    return frame
+        frame = load_database_frame(
+            "master_training_data", order_by=("timestamp",)
+        )
+        source = "database:master_training_data"
+        if frame is None:
+            if not path.exists():
+                return pd.DataFrame()
+            frame = pd.read_csv(path, low_memory=False)
+            source = path
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame = frame.dropna(subset=["timestamp", "demand_mw"]).sort_values("timestamp").reset_index(drop=True)
+
+        numeric_columns = [
+            "demand_mw",
+            "temperature_2m",
+            "apparent_temperature",
+            "relative_humidity_2m",
+            "precipitation",
+            "cloud_cover",
+            "wind_speed_10m",
+            "shortwave_radiation",
+            "is_holiday",
+            "cal_is_event_day",
+            "cal_is_non_working_day",
+        ]
+        for column in numeric_columns:
+            if column in frame.columns:
+                frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+        MASTER_CACHE.update(
+            {
+                "path": source,
+                "mtime": mtime,
+                "loaded_at": time.time(),
+                "frame": frame,
+            }
+        )
+        return frame.copy()
 
 
 def filter_period(frame: pd.DataFrame, period: str) -> pd.DataFrame:
@@ -523,9 +630,13 @@ def special_events() -> dict:
 
 def weather_forecast() -> dict:
     path = project_path(WEATHER_FORECAST_PATH)
-    if not path.exists():
+    frame = load_database_frame(
+        "forecast_feature_data", order_by=("timestamp",)
+    )
+    if frame is None and not path.exists():
         return {"points": [], "range": "-"}
-    frame = pd.read_csv(path, low_memory=False)
+    if frame is None:
+        frame = pd.read_csv(path, low_memory=False)
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
     frame = frame.dropna(subset=["timestamp"]).sort_values("timestamp")
     chart = downsample_series(frame, ["temperature_2m", "precipitation", "cloud_cover"], max_points=220)
@@ -589,8 +700,12 @@ def forecast_inputs() -> dict:
         "status": "Forecast feature dataset is missing. Run Build Forecast Feature Dataset.",
     }
 
-    if forecast_path.exists():
+    frame = load_database_frame(
+        "forecast_feature_data", order_by=("timestamp",)
+    )
+    if frame is None and forecast_path.exists():
         frame = pd.read_csv(forecast_path, low_memory=False)
+    if frame is not None:
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         frame = frame.dropna(subset=["timestamp"]).sort_values("timestamp")
         if not frame.empty:
@@ -1390,14 +1505,21 @@ def ml_forecast_payload(query: dict[str, list[str]]) -> dict:
                 return {"status": "error", "message": "horizon must be one of 24, 48, 72, 168.", "models": registry}
             forecast_path = project_path(FAST_HORIZON_FORECAST_PATHS[horizon])
         summary = load_json_file(FAST_SUMMARY_PATH)
-        if not forecast_path.exists():
+        database_model = "fast_weighted_24h" if use_weighted else "fast_xgboost"
+        frame = load_database_frame(
+            "forecast_predictions",
+            filters={"model": database_model, "horizon_hours": horizon},
+            order_by=("timestamp",),
+        )
+        if frame is None and not forecast_path.exists():
             return {
                 "status": "missing_forecast",
                 "model": model,
                 "forecast": [],
                 "message": "Run Fast Gap Fill + Forecast first.",
             }
-        frame = pd.read_csv(forecast_path, low_memory=False)
+        if frame is None:
+            frame = pd.read_csv(forecast_path, low_memory=False)
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
         frame = frame.dropna(subset=["timestamp", "predicted_demand_mw"]).sort_values("timestamp")
         forecast_rows = []
@@ -1534,27 +1656,71 @@ def run_task_unlocked(task_key: str) -> str:
     if task is None:
         return f"Unknown task: {task_key}"
 
-    _, relative_scripts = task
+    label, relative_scripts = task
+    started = utc_now()
+    report = {"id": uuid.uuid4().hex, "task": task_key, "label": label, "started_at": started, "finished_at": None, "status": "running", "steps": [], "message": "Pipeline is running.", "origin": "github_actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "dashboard"}
+    if os.environ.get("GITHUB_RUN_ID") and os.environ.get("GITHUB_REPOSITORY"):
+        report["run_url"] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    write_report("run", report)
     lines = []
     for relative_script, optional in relative_scripts:
         script_path = project_path(relative_script)
-        if not script_path.exists():
-            lines.append(f"Script not found: {relative_script}")
+        step = {"script": str(relative_script), "status": "running", "started_at": utc_now(), "optional": optional}
+        report["steps"].append(step)
+        write_report("run", report)
+        try:
+            if not script_path.exists():
+                raise FileNotFoundError(f"Script not found: {relative_script}")
+            completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=int(os.environ.get("PIPELINE_STEP_TIMEOUT_SECONDS", "900")))
+            lines.append(f"$ {sys.executable} {relative_script}")
+            if completed.stdout.strip():
+                lines.append(completed.stdout.strip())
+            if completed.stderr.strip():
+                lines.append(completed.stderr.strip())
+            lines.append(f"Exit code: {completed.returncode}")
+            step.update(status="ok" if completed.returncode == 0 else "failed", exit_code=completed.returncode)
+            source_name = {"download_latest_neso_demand.py": "neso", "api_weather.py": "weather"}.get(relative_script.name)
+            source = read_report(source_name) if source_name else {}
+            if source.get("checked_at", "") >= started and source.get("status") in {"cached", "degraded", "failed"}:
+                step["message"] = source.get("message", "")
+                if step["status"] == "ok":
+                    step["status"] = "degraded"
+        except Exception as exc:
+            step.update(status="failed", message=f"{type(exc).__name__}: {exc}")
+            lines.append(step["message"])
+        step["finished_at"] = utc_now()
+        write_report("run", report)
+        if step["status"] == "failed" and not optional:
+            report["status"] = "failed"
             break
-
-        completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True)
-        lines.append(f"$ {sys.executable} {relative_script}")
-        if completed.stdout.strip():
-            lines.append(completed.stdout.strip())
-        if completed.stderr.strip():
-            lines.append(completed.stderr.strip())
-        lines.append(f"Exit code: {completed.returncode}")
-        if completed.returncode != 0:
-            if optional:
-                lines.append("Continuing with the next step because this step is optional.")
-                continue
-            break
+    if report["status"] != "failed":
+        report["status"] = "degraded" if any(s["status"] != "ok" for s in report["steps"]) else "ok"
+    report["finished_at"] = utc_now()
+    report["message"] = {"ok": "All requested steps completed.", "degraded": "Completed with source fallback or optional-step failures; review the source alerts.", "failed": "Pipeline stopped before all requested steps completed. The public forecast may still be old."}[report["status"]]
+    write_report("run", report)
+    lines.append(report["message"])
     return "\n".join(lines)
+
+
+def start_background_task(task_key: str) -> tuple[bool, str]:
+    if task_key not in TASKS:
+        return False, "Unknown pipeline task."
+    if not TASK_LOCK.acquire(blocking=False):
+        return False, "Another pipeline task is already running."
+
+    def worker():
+        try:
+            DashboardHandler.last_output = run_task_unlocked(task_key)
+        except Exception as exc:
+            DashboardHandler.last_output = f"Pipeline error: {exc}"
+        finally:
+            TASK_LOCK.release()
+    try:
+        threading.Thread(target=worker, name="manual-pipeline", daemon=True).start()
+    except Exception:
+        TASK_LOCK.release()
+        raise
+    return True, "Pipeline started. Step status and source alerts will update below."
 
 
 def automatic_prediction_loop() -> None:
@@ -1633,6 +1799,8 @@ def required_role_for_page(path: str) -> str:
 
 
 def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
+    if path == "/api/pipeline-health":
+        return pipeline_health(auto_enabled=AUTO_PREDICTIONS_ENABLED, interval=max(1, AUTO_PREDICTION_INTERVAL_HOURS), running=TASK_LOCK.locked())
     period = query.get("period", ["last_week"])[0]
     if path == "/api/summary":
         return {"datasets": dataset_summary(), "artifacts": artifact_summary()}
@@ -1962,9 +2130,9 @@ def html_page(last_output: str = "") -> str:
 class DashboardHandler(BaseHTTPRequestHandler):
     last_output = ""
 
-    def send_json(self, payload) -> None:
+    def send_json(self, payload, status_code: int = 200) -> None:
         content = json.dumps(payload).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -1996,7 +2164,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_forbidden(required_role)
                 return
             try:
-                self.send_json(api_payload(parsed.path, query))
+                payload = api_payload(parsed.path, query)
+                status_code = (
+                    400
+                    if isinstance(payload, dict) and payload.get("status") == "error"
+                    else 200
+                )
+                self.send_json(payload, status_code=status_code)
             except KeyError:
                 self.send_error(404)
             except Exception as exc:
@@ -2037,7 +2211,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         task_key = form.get("task", [""])[0]
-        DashboardHandler.last_output = run_task(task_key)
+        accepted, message = start_background_task(task_key)
+        if self.headers.get("Accept") == "application/json":
+            self.send_json({"accepted": accepted, "message": message})
+            return
+        if not accepted:
+            DashboardHandler.last_output = message
         self.send_response(303)
         token = token_from_query(query)
         self.send_header("Location", f"/super-admin?token={token}" if token else "/super-admin")

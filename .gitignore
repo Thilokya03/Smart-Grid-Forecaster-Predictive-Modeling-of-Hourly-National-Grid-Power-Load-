@@ -4,13 +4,18 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.test-tmp/
+.pytest-tmp/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
 venv/
 env/
+.env.*
 .venv-gpu/
 
 # Notebook/runtime caches
@@ -21,24 +26,13 @@ env/
 .env
 .env.*
 
-# Generated datasets and runtime data
-data/**/*.csv
-data/**/*.db
-data/**/*.sqlite
-data/**/*.sqlite3
-data/**/*.json
+# Generated datasets and runtime data are tracked in the private deploy repo
+# so Render Free can serve a complete dashboard snapshot.
 data/**/*.download
-data/**/*.txt
 
-# Root-level generated data, kept for backward compatibility if recreated
-*.csv
-*.db
-*.sqlite
-*.sqlite3
-
-# Model artifacts and reports
-artifacts/
+# Model training run folders that are not needed for deployment
 mlruns/
+artifacts/prophet_baseline/prophet_model.json
 *.pkl
 *.pickle
 *.joblib
@@ -56,12 +50,12 @@ desktop.ini
 .vscode/
 .idea/
 
+# Generated results are local except for the current deployment forecast.
+results/*
+!results/fast_predictions/
+!results/fast_predictions/**
+
 # Tracked processed dataset for model training/submission
 !data/processed/master_training_data.csv
-
-
-# results
-results/
-
 
 .claude/

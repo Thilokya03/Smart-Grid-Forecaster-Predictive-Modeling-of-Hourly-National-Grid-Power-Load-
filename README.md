@@ -10,6 +10,7 @@ This project builds a UK hourly demand and weather dataset, trains/serves foreca
 - `ui/` - Python dashboard server and static frontend assets
 - `data/` - generated local datasets
 - `results/` - generated model files, validation outputs, and forecasts
+- `artifacts/` - legacy evaluation outputs and the bundled deployment snapshot
 
 ## Normal Update Flow
 
@@ -62,6 +63,10 @@ Access levels:
 
 Public pages:
 
+The [public forecast explorer](docs/public_dashboard.md) includes day filters,
+hourly/3-hour/6-hour averages, a demand heatmap, lower-demand planning windows,
+CSV downloads, calculated insights, and saved theme preferences.
+
 - `/`
 - `/forecast`
 - `/forecast/detailed`
@@ -77,6 +82,10 @@ python -m ui.pipeline_dashboard
 ```
 
 ## Automatic Predictions
+
+Super-admin's **Update Health & Alerts** panel reports source failures, cached
+fallbacks, overdue forecasts, and pipeline progress. See
+[pipeline monitoring and Render update setup](docs/pipeline_monitoring.md).
 
 Use these environment variables:
 
@@ -131,23 +140,23 @@ Render should run this as a Docker Web Service, not a Static Site.
 The included `render.yaml` config uses:
 
 - root `Dockerfile`
-- service branch `dev`
+- service branch `main`
+- free web service plan
 - public port `10000`
-- persistent disk mounted at `/app/storage`
-- `data/` mapped to `/app/storage/data`
-- `results/` mapped to `/app/storage/artifacts`
-- automatic prediction refresh every 6 hours
-- startup refresh enabled for first deploys
+- `requirements-render.txt` for a smaller dashboard runtime install
+- bundled latest `data/` and `artifacts/` snapshot for dashboard display
+- automatic in-service prediction refresh disabled
 
 Deploy steps:
 
-1. Push this repo to GitHub and merge the deployment changes into `dev`.
+1. Push the deployment repository to GitHub.
 2. In Render, choose **New +** then **Blueprint**.
 3. Connect the GitHub repository.
 4. Select the `render.yaml` file.
 5. Set secret values for:
    - `DASHBOARD_ADMIN_TOKEN`
    - `DASHBOARD_SUPER_ADMIN_TOKEN`
+   - `DATABASE_URL`
 6. Create the service and wait for the first deploy.
 7. Open the Render URL.
 
@@ -169,7 +178,139 @@ Super-admin page:
 https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
 
-The first deploy uses `AUTO_PREDICTION_RUN_ON_START=true`, so the service starts a refresh automatically. The public page may show missing forecast files until that first run finishes.
+Free Render web services do not support persistent disks, so this deployment stores generated `data/`, `artifacts/`, and current `results/fast_predictions/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
+
+### Supabase PostgreSQL storage
+
+The four canonical pipeline datasets are published to PostgreSQL whenever
+`DATABASE_URL` is configured. The existing CSV files are still written after a
+successful database publication, so training and dashboard code can continue
+to use the same paths.
+
+This deployment uses Supabase as a PostgreSQL host. It connects directly with
+the database connection string; it does not use the Supabase Data API, Auth,
+or JavaScript client. Therefore, `SUPABASE_URL`, publishable/anon keys, and
+secret/service-role keys are not required.
+
+Create a free Supabase project, then open **Connect** and select **Session
+pooler**. Use the session-pooler connection string on port `5432`, which works
+over IPv4 from Render, GitHub Actions, and most local networks. Replace
+`[YOUR-PASSWORD]` with the database password selected when the project was
+created. Percent-encode reserved password characters such as `@`, `#`, `?`,
+and spaces before placing the password in a URL.
+
+The connection should have this general form:
+
+```text
+DATABASE_URL=postgresql://postgres.<project-ref>:<encoded-password>@<pooler-host>:5432/postgres?sslmode=require
+DATABASE_SCHEMA=weather_pipeline
+PGSSLMODE=require
+```
+
+Hosted `postgresql://` and legacy `postgres://` connection strings are
+automatically configured to use the included Psycopg 3 driver.
+
+The generated tables are `hourly_load`, `weather_hourly`,
+`master_training_data`, `forecast_feature_data`, and `forecast_predictions`.
+Each update replaces its table in one transaction and adds an entry to
+`pipeline_runs`. When `DATABASE_URL` is absent, the pipeline remains CSV-only.
+
+The dashboard reads master data, forecast inputs, and current predictions from
+PostgreSQL when configured, with CSV fallback if a dashboard read fails. The
+fast prediction job reads its training and feature inputs from PostgreSQL and
+publishes all generated horizons to `forecast_predictions`; its existing CSV
+outputs remain unchanged.
+
+To backfill PostgreSQL from the current CSV snapshots without downloading new
+source data:
+
+```powershell
+python uk_training_data_prep\publish_existing_csvs.py
+```
+
+Run the prediction task once to create `forecast_predictions`, then verify
+connectivity and row counts:
+
+```powershell
+python -m models.prophet.fast_gap_fill_and_forecast
+python uk_training_data_prep\check_database.py
+```
+
+#### Supabase and deployment secrets
+
+Set these values in the Render web service under **Environment**:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **Session pooler** URL with the database password |
+| `DASHBOARD_ADMIN_TOKEN` | A random token generated locally |
+| `DASHBOARD_SUPER_ADMIN_TOKEN` | A different random token generated locally |
+
+`DATABASE_SCHEMA=weather_pipeline` and `PGSSLMODE=require` are already set by
+`render.yaml`. Because `DATABASE_URL` has `sync: false`, add it manually when
+updating an existing Render Blueprint, then choose **Save and deploy**.
+
+Generate the two dashboard tokens locally; these do not come from Supabase:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+In GitHub, open **Settings > Secrets and variables > Actions** and create one
+repository secret:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | The same Supabase **Session pooler** URL |
+
+The workflow already sets `PGSSLMODE=require`. Keep the connection string and
+dashboard tokens out of source control. A Supabase publishable key or secret
+API key is only needed if the application is later changed to use Supabase's
+REST API, Auth, Realtime, or Storage.
+
+For the initial local backfill in PowerShell:
+
+```powershell
+$env:DATABASE_URL = "<Supabase Session pooler URL>"
+$env:DATABASE_SCHEMA = "weather_pipeline"
+$env:PGSSLMODE = "require"
+
+python uk_training_data_prep\publish_existing_csvs.py
+python -m models.prophet.fast_gap_fill_and_forecast
+python uk_training_data_prep\check_database.py
+```
+
+### Weather gap audit and repair
+
+The update pipeline audits hourly weather continuity before rebuilding the
+combined weather and master datasets. It checks the aggregate CSVs and saved
+city extracts first. Missing hours that are not available locally are fetched
+from the Open-Meteo historical archive in batched requests, and all configured
+UK cities must contain every requested variable before a repair is published.
+
+Audit without changing files or using the network:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py --check-only
+```
+
+Audit and repair missing hours:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py
+python uk_training_data_prep\build_weather_feature_data.py
+python uk_training_data_prep\build_master_training_data.py
+```
+
+City-level repair evidence is stored in
+`data/weather_runtime/weather_gap_repair_city_data.csv`, and the latest audit
+is stored in `artifacts/pipeline_status/weather_gap_repair.json`. Dataset
+builders stop with an error if hourly gaps or null weather values remain.
+
+The master-data builder preserves the demand and weather measurements from the
+source CSVs. Any outlier treatment needed by a model must be fitted only on its
+training split; the canonical datasets are not percentile-clipped.
 
 ## NESO Lag Handling
 

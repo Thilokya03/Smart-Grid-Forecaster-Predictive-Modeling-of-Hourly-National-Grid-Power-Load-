@@ -37,6 +37,8 @@ from build_master_training_data import (  # noqa: E402
     standardize_holidays,
     standardize_weather,
 )
+from database import publish_dataframe, read_dataframe  # noqa: E402
+from ui.pipeline_health import utc_now, write_report
 
 
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
@@ -83,7 +85,9 @@ def load_config(fast_estimators: int) -> dict:
 
 
 def load_master() -> pd.DataFrame:
-    data = pd.read_csv(MASTER_PATH, low_memory=False)
+    data = read_dataframe("master_training_data", order_by=(TIMESTAMP_COLUMN,))
+    if data is None:
+        data = pd.read_csv(MASTER_PATH, low_memory=False)
     data[TIMESTAMP_COLUMN] = pd.to_datetime(data[TIMESTAMP_COLUMN], errors="coerce")
     data = (
         data.dropna(subset=[TIMESTAMP_COLUMN, TARGET_COLUMN])
@@ -143,7 +147,10 @@ def build_feature_rows_from_weather(weather: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_historical_feature_rows(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
-    weather = standardize_weather(load_hourly_csv(WEATHER_PATH, "Weather"))
+    weather = read_dataframe("weather_hourly", order_by=(TIMESTAMP_COLUMN,))
+    if weather is None:
+        weather = load_hourly_csv(WEATHER_PATH, "Weather")
+    weather = standardize_weather(weather)
     weather = weather[(weather[TIMESTAMP_COLUMN] >= start) & (weather[TIMESTAMP_COLUMN] <= end)].copy()
     return build_feature_rows_from_weather(weather)
 
@@ -191,15 +198,31 @@ def load_prediction_features(start: pd.Timestamp, end: pd.Timestamp, first_histo
         if not weather_gap.empty:
             pieces.append(weather_gap)
 
-    if FORECAST_FEATURE_PATH.exists():
-        forecast = pd.read_csv(FORECAST_FEATURE_PATH, low_memory=False)
-        forecast[TIMESTAMP_COLUMN] = pd.to_datetime(forecast[TIMESTAMP_COLUMN], errors="coerce")
-        forecast = forecast[(forecast[TIMESTAMP_COLUMN] >= start) & (forecast[TIMESTAMP_COLUMN] <= end)].copy()
+    forecast_source = read_dataframe(
+        "forecast_feature_data", order_by=(TIMESTAMP_COLUMN,)
+    )
+    if forecast_source is None and FORECAST_FEATURE_PATH.exists():
+        forecast_source = pd.read_csv(FORECAST_FEATURE_PATH, low_memory=False)
+    if forecast_source is not None:
+        forecast_source[TIMESTAMP_COLUMN] = pd.to_datetime(
+            forecast_source[TIMESTAMP_COLUMN], errors="coerce"
+        )
+        forecast = forecast_source[
+            (forecast_source[TIMESTAMP_COLUMN] >= start)
+            & (forecast_source[TIMESTAMP_COLUMN] <= end)
+        ].copy()
         if not forecast.empty:
             pieces.append(forecast)
 
     if not pieces:
-        raise RuntimeError(f"No feature rows are available between {start} and {end}.")
+        source_frames = [master]
+        if forecast_source is not None and not forecast_source.empty:
+            source_frames.append(forecast_source)
+        weather_source = pd.concat(source_frames, ignore_index=True, sort=False)
+        generated_weather = generated_weather_rows(
+            pd.date_range(start=start, end=end, freq="h"), weather_source
+        )
+        pieces.append(build_feature_rows_from_weather(generated_weather))
 
     combined = pd.concat(pieces, ignore_index=True, sort=False)
     combined[TIMESTAMP_COLUMN] = pd.to_datetime(combined[TIMESTAMP_COLUMN], errors="coerce")
@@ -453,6 +476,28 @@ def run(args: argparse.Namespace) -> dict:
         history_plus_backfill[[TIMESTAMP_COLUMN, TARGET_COLUMN]].copy(),
     )
     detailed_24h_path = OUTPUT_DIR / "detailed_weighted_24h_forecast.csv"
+    generated_at = pd.Timestamp(utc_now()).tz_localize(None)
+    prediction_frames = []
+    for horizon in horizons:
+        horizon_frame = forecast.head(horizon).copy()
+        horizon_frame["model"] = "fast_xgboost"
+        horizon_frame["horizon_hours"] = horizon
+        horizon_frame["forecast_generated_at"] = generated_at
+        prediction_frames.append(horizon_frame)
+    detailed_database = detailed_24h.copy()
+    detailed_database["horizon_hours"] = 24
+    detailed_database["forecast_generated_at"] = generated_at
+    prediction_frames.append(detailed_database)
+    publish_dataframe(
+        pd.concat(prediction_frames, ignore_index=True, sort=False),
+        "forecast_predictions",
+        key_columns=(
+            "forecast_generated_at",
+            "timestamp",
+            "horizon_hours",
+            "model",
+        ),
+    )
     detailed_24h.to_csv(detailed_24h_path, index=False)
 
     latest_actual = master[TIMESTAMP_COLUMN].max()
@@ -460,6 +505,7 @@ def run(args: argparse.Namespace) -> dict:
     nowcast_start = latest_actual + pd.Timedelta(hours=1) if demand_lag_hours > 0 else None
     elapsed_seconds = time.perf_counter() - started
     summary = {
+        "generated_at": utc_now(),
         "model": "XGBoost fast recursive",
         "fast_estimators": config["params"]["n_estimators"],
         "horizons": horizons,
@@ -488,7 +534,7 @@ def run(args: argparse.Namespace) -> dict:
             "summary": str(summary_path.relative_to(PROJECT_ROOT)),
         },
     }
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_report("fast_prediction_summary", summary, OUTPUT_DIR)
     return summary
 
 
