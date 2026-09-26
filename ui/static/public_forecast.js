@@ -14,6 +14,8 @@ let fastRows = [], displayedChunks = [], fastRequest = 0, refreshRunning = false
 let lastCheckedAt = 0;
 const chartStates = {};
 const loadErrors = new Map();
+const trendExplanationCache = new Map();
+let trendExplanationRequest = 0;
 
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -209,6 +211,100 @@ function showHour(point) {
   const first = rows[0], weather = weatherPoints.find(p => E.clock(p.timestamp) === first.time);
   const difference = all?.average ? (point.predicted_demand_mw / all.average - 1) * 100 : 0;
   $("hourDetails").innerHTML = '<h3>' + escapeHtml(dateLabel(point.timestamp)) + '</h3><span class="focus-time">' + escapeHtml(hourLabel(point.timestamp) + (point.end ? " - " + hourLabel(point.end) : "")) + '</span><strong class="focus-demand">' + formatDemand(point.predicted_demand_mw) + '</strong><span class="demand-tag ' + E.band(point, fastRows) + '">' + ({low: "Lower", middle: "Middle", high: "Higher"}[E.band(point, fastRows)]) + ' demand in this horizon</span><dl><div><dt>Versus horizon average</dt><dd>' + (difference > 0 ? "+" : "") + formatNumber(difference) + '%</dd></div><div><dt>Available hours</dt><dd>' + rows.length + (point.complete === false ? " / " + chunkSize + " (partial)" : "") + '</dd></div><div><dt>Within-period low</dt><dd>' + formatDemand(s.low.predicted_demand_mw) + '</dd></div><div><dt>Within-period peak</dt><dd>' + formatDemand(s.peak.predicted_demand_mw) + '</dd></div><div><dt>Weather at ' + hourLabel(first.timestamp) + '</dt><dd>' + (E.number(weather?.temperature_2m) !== null ? formatNumber(weather.temperature_2m) + " &deg;C" : "Unavailable") + '</dd></div></dl><p class="section-note">Forecast estimate. UK clock time as published.</p>';
+  loadTrendExplanation(point);
+}
+function renderTrendExplanation(result) {
+  const panel = $("trendExplanation");
+  if (!panel) return;
+  panel.replaceChildren();
+  const heading = document.createElement("h3");
+  heading.textContent = result.headline || "Why this forecast point stands out";
+  panel.append(heading);
+  if (result.status !== "ready") {
+    const message = document.createElement("p");
+    message.textContent = result.message || "An explanation is not available for this hour.";
+    panel.append(message);
+    return;
+  }
+  const facts = result.evidence || {};
+  const tiles = [];
+  if (facts.demand_mw != null) tiles.push(["Selected forecast", formatDemand(facts.demand_mw)]);
+  if (facts.typical_hourly_demand_mw != null) {
+    tiles.push(["Typical for similar dates", formatDemand(facts.typical_hourly_demand_mw)]);
+    const difference = Number(facts.demand_vs_typical_pct);
+    tiles.push(["Vs historical typical", (difference > 0 ? "+" : "") + formatNumber(difference) + "%"]);
+    tiles.push(["Comparable dates", String(facts.matched_days)]);
+  }
+  if (facts.calendar_events?.length) tiles.push(["Calendar context", facts.calendar_events.join(", ")]);
+  if (facts.same_event_comparison?.typical_demand_mw != null) {
+    tiles.push(["Typical on this event", formatDemand(facts.same_event_comparison.typical_demand_mw)]);
+  }
+  if (facts.weather_comparison?.mean_temperature_c != null) {
+    tiles.push(["Mean temperature", formatNumber(facts.weather_comparison.mean_temperature_c) + " °C"]);
+  }
+  if (facts.weather_comparison?.precipitation_mm > 0) {
+    tiles.push(["Daily precipitation", formatNumber(facts.weather_comparison.precipitation_mm) + " mm"]);
+  }
+  if (facts.weather_comparison?.mean_wind_speed_m_s != null) {
+    tiles.push(["Mean wind speed", formatNumber(facts.weather_comparison.mean_wind_speed_m_s) + " m/s"]);
+  }
+  if (facts.weather_comparison?.mean_relative_humidity_pct != null) {
+    tiles.push(["Relative humidity", formatNumber(facts.weather_comparison.mean_relative_humidity_pct) + "%"]);
+  }
+  if (facts.weather_comparison?.mean_cloud_cover_pct != null) {
+    tiles.push(["Cloud cover", formatNumber(facts.weather_comparison.mean_cloud_cover_pct) + "%"]);
+  }
+  if (tiles.length) {
+    const grid = document.createElement("div");
+    grid.className = "trend-fact-grid";
+    tiles.forEach(([label, value]) => {
+      const tile = document.createElement("div"), caption = document.createElement("span"), strong = document.createElement("strong");
+      tile.className = "trend-fact";
+      caption.textContent = label;
+      strong.textContent = value;
+      tile.append(caption, strong);
+      grid.append(tile);
+    });
+    panel.append(grid);
+  }
+  (result.explanations || []).forEach(statement => {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = statement;
+    panel.append(paragraph);
+  });
+  const note = document.createElement("p");
+  note.className = "section-note";
+  note.textContent = (result.method || "") + " " + (result.causality_note || "") + " Wording: " + (result.wording_source || "data-driven");
+  panel.append(note);
+}
+async function loadTrendExplanation(point) {
+  const panel = $("trendExplanation");
+  if (!panel) return;
+  if ((point.rows || []).length > 1) {
+    panel.textContent = "This selection combines several forecast hours. Choose a single hourly point for a like-for-like historical comparison.";
+    return;
+  }
+  const hourlyPoint = (point.rows || [point])[0];
+  const cacheKey = hourlyPoint.timestamp + ":" + hourlyPoint.predicted_demand_mw;
+  if (trendExplanationCache.has(cacheKey)) {
+    renderTrendExplanation(trendExplanationCache.get(cacheKey));
+    return;
+  }
+  const requestId = ++trendExplanationRequest;
+  panel.innerHTML = "<p>Comparing this forecast with similar historical dates and checking the available UK context...</p>";
+  try {
+    const query = new URLSearchParams({timestamp: hourlyPoint.timestamp, predicted_mw: hourlyPoint.predicted_demand_mw});
+    const result = await fetchJson("/api/trend-explanation?" + query);
+    if (requestId !== trendExplanationRequest || selectedTimestamp !== point.timestamp) return;
+    trendExplanationCache.set(cacheKey, result);
+    renderTrendExplanation(result);
+  } catch (error) {
+    if (requestId !== trendExplanationRequest) return;
+    panel.innerHTML = "";
+    const message = document.createElement("p");
+    message.textContent = "Trend context is temporarily unavailable; the forecast itself is still available.";
+    panel.append(message);
+  }
 }
 function renderHeatmap(rows) {
   const groups = E.days(rows);

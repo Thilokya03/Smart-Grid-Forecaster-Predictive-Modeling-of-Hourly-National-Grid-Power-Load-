@@ -111,6 +111,14 @@
 .public-page .hour-inspector dt { color: var(--text-muted); }
 .public-page .hour-inspector dd { text-align: right; margin: 0; }
 .public-page .hour-inspector .section-note { font-size: 10px; }
+.public-page .trend-explanation { margin-top: 16px; padding: 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-muted); }
+.public-page .trend-explanation h3 { margin: 0 0 10px; font-size: 16px; }
+.public-page .trend-explanation p { margin: 8px 0; font-size: 13px; line-height: 1.65; }
+.public-page .trend-explanation .section-note { color: var(--text-muted); font-size: 11px; }
+.public-page .trend-fact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; margin: 10px 0; }
+.public-page .trend-fact { min-width: 0; padding: 10px; border: 1px solid var(--border-soft); border-radius: 9px; background: var(--surface); }
+.public-page .trend-fact span { display: block; color: var(--text-muted); font-size: 11px; }
+.public-page .trend-fact strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 14px; }
 .public-page .demand-tag { display: inline-block; padding: 4px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; }
 .public-page .low, .public-page .legend-low { background: var(--low-bg); color: var(--low-text); }
 .public-page .middle, .public-page .legend-middle { background: var(--mid-bg); color: var(--mid-text); }

@@ -13,6 +13,8 @@ import sys
 import threading
 import time
 import uuid
+import urllib.error
+import urllib.request
 
 import pandas as pd
 from ui.pipeline_health import pipeline_health, read_report, write_report, utc_now
@@ -257,6 +259,7 @@ PUBLIC_API_PATHS = {
     "/api/weather-forecast",
     "/api/forecast-inputs",
     "/api/explainability",
+    "/api/trend-explanation",
     "/api/v1/forecast/ml",
 }
 ADMIN_API_PATHS = {
@@ -902,6 +905,403 @@ def explainability_summary() -> dict:
         "trend_groups": trend_groups,
         "ensemble_weights": ensemble_weights,
     }
+
+
+def _number(value, digits: int = 1):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(number, digits) if pd.notna(number) else None
+
+
+def _flag(value) -> bool:
+    number = _number(value, 0)
+    return number is not None and number != 0
+
+
+def _explanation_text_from_facts(facts: dict) -> list[str]:
+    """Turn observed values and historical comparisons into cautious prose."""
+    statements = []
+    timestamp = pd.Timestamp(facts["timestamp"])
+    demand = facts.get("demand_mw")
+    typical = facts.get("typical_hourly_demand_mw")
+    sample_size = facts.get("matched_days", 0)
+    delta_pct = facts.get("demand_vs_typical_pct")
+
+    if demand is not None and typical is not None:
+        direction = "above" if demand > typical else "below" if demand < typical else "right around"
+        difference = abs(delta_pct or 0)
+        band = facts.get("historical_hourly_band_mw") or []
+        band_text = f" The middle half of comparable readings was {band[0]:,.0f}–{band[1]:,.0f} MW." if len(band) == 2 else ""
+        if facts.get("forecast_point"):
+            statements.append(
+                f"The forecast for {timestamp:%H:%M} is {demand:,.0f} MW, {direction} the usual "
+                f"{typical:,.0f} MW for this hour on similar dates ({difference:.1f}% difference; "
+                f"{sample_size} comparable days).{band_text}"
+            )
+        else:
+            statements.append(
+                f"At {timestamp:%H:%M}, demand was {demand:,.0f} MW, {direction} the usual "
+                f"{typical:,.0f} MW for this hour on similar dates ({difference:.1f}% difference; "
+                f"{sample_size} comparable days).{band_text}"
+            )
+        daily_avg = facts.get("daily_average_demand_mw")
+        daily_typical = facts.get("typical_daily_average_demand_mw")
+        if daily_avg is not None and daily_typical is not None:
+            daily_delta = facts.get("daily_average_vs_typical_pct", 0)
+            daily_direction = "higher" if daily_delta > 0 else "lower" if daily_delta < 0 else "in line"
+            statements.append(
+                f"Across {timestamp:%A %d %B}, average demand was {daily_avg:,.0f} MW—"
+                f"{abs(daily_delta):.1f}% {daily_direction} than the {daily_typical:,.0f} MW "
+                "average on those comparable dates."
+            )
+    elif demand is not None:
+        statement = (
+            f"The forecast for {timestamp:%H:%M} is {demand:,.0f} MW."
+            if facts.get("forecast_point")
+            else f"Demand at {timestamp:%H:%M} was {demand:,.0f} MW."
+        )
+        statements.append(
+            statement + " There were not enough matching historical dates to make a reliable "
+            "like-for-like comparison."
+        )
+
+    events = facts.get("calendar_events") or []
+    if events:
+        region = facts.get("holiday_region")
+        regional_text = f" ({region})" if region else ""
+        statements.append(
+            f"The calendar marks {', '.join(events)}{regional_text} on this date. "
+            "That is a coincident calendar signal, not proof that the event caused the demand level."
+        )
+        event_comparison = facts.get("same_event_comparison") or {}
+        event_typical = event_comparison.get("typical_demand_mw")
+        if event_typical is not None:
+            event_delta = event_comparison.get("demand_delta_pct") or 0
+            event_direction = "above" if event_delta > 0 else "below" if event_delta < 0 else "in line with"
+            statements.append(
+                f"Compared with other dates carrying this same calendar event label, this hour's "
+                f"demand was {abs(event_delta):.1f}% {event_direction} the typical {event_typical:,.0f} MW "
+                f"({event_comparison['matched_event_days']} prior event dates). This is a descriptive "
+                "comparison, not an estimate of the event's causal effect."
+            )
+
+    weather = facts.get("weather_comparison") or {}
+    if weather.get("temperature_delta_c") is not None:
+        delta = weather["temperature_delta_c"]
+        temperature_subject = "Forecast mean temperature" if facts.get("forecast_point") else "The day's mean temperature"
+        temperature_verb = "is" if facts.get("forecast_point") else "was"
+        if abs(delta) >= 1.5:
+            descriptor = "warmer" if delta > 0 else "colder"
+            statements.append(
+                f"{temperature_subject} {temperature_verb} {abs(delta):.1f}°C {descriptor} than on the "
+                "matched historical dates. This is weather context; this comparison alone does "
+                "not estimate weather's independent effect on demand."
+            )
+        elif weather.get("mean_temperature_c") is not None:
+            statements.append(
+                f"{temperature_subject} {temperature_verb} {weather['mean_temperature_c']:.1f}°C, close to the "
+                "matched-date average, so the weather data does not stand out as an unusual signal."
+            )
+
+    rain_delta = weather.get("precipitation_delta_mm")
+    if rain_delta is not None and abs(rain_delta) >= 1.0:
+        rain_direction = "wetter" if rain_delta > 0 else "drier"
+        statements.append(
+            f"{'Forecast daily precipitation' if facts.get('forecast_point') else 'Daily precipitation'} "
+            f"{'is' if facts.get('forecast_point') else 'was'} {abs(rain_delta):.1f} mm {rain_direction} than on the "
+            "matched dates. This is descriptive weather context, not evidence of a demand cause."
+        )
+    other_weather = [
+        ("wind_speed_delta_m_s", "wind speed", "m/s", 5.0),
+        ("humidity_delta_pct", "relative humidity", "percentage points", 10.0),
+        ("cloud_cover_delta_pct", "cloud cover", "percentage points", 20.0),
+    ]
+    for key, label, unit, threshold in other_weather:
+        delta = weather.get(key)
+        if delta is None or abs(delta) < threshold:
+            continue
+        direction = "higher" if delta > 0 else "lower"
+        subject = "Forecast " + label if facts.get("forecast_point") else label.capitalize()
+        verb = "is" if facts.get("forecast_point") else "was"
+        statements.append(
+            f"{subject} {verb} {abs(delta):.1f} {unit} {direction} than on similar historical dates. "
+            "This is contextual weather information, not a measured causal effect on demand."
+        )
+
+    if facts.get("economic_context"):
+        items = facts["economic_context"]
+        statements.append(
+            "Available lagged UK economic context: " + "; ".join(
+                f"{item['label']} {item['value']}" for item in items
+            ) + ". These monthly lagged indicators are background context, not a same-day cause."
+        )
+
+    if not statements:
+        statements.append("There is not enough matching demand or context data to explain this point yet.")
+    return statements
+
+
+def _llama_reword(facts: dict, statements: list[str]) -> list[str]:
+    """Optionally rephrase evidence with a local Ollama model; never required."""
+    model = os.environ.get("EXPLANATION_LLM_MODEL", "").strip()
+    if not model:
+        return statements
+    base_url = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    prompt = (
+        "Rewrite the supplied grid-demand explanation in clear, varied UK English for a "
+        "dashboard reader. Use only the supplied statements and facts. Do not add causes, "
+        "events, numbers, or claims. Preserve caveats that event/weather coincidence is not "
+        "causality. Return only the rewritten statements as a JSON string array.\n"
+        + json.dumps({"facts": facts, "statements": statements}, ensure_ascii=False)
+    )
+    request = urllib.request.Request(
+        f"{base_url}/api/generate",
+        data=json.dumps({"model": model, "prompt": prompt, "stream": False, "format": "json"}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        rewritten = json.loads(result.get("response", ""))
+        if isinstance(rewritten, list) and rewritten and all(isinstance(item, str) for item in rewritten):
+            # Keep measured numeric facts visible even if the model drops them.
+            return rewritten[:6]
+    except (OSError, ValueError, KeyError, urllib.error.URLError):
+        pass
+    return statements
+
+
+def build_trend_explanation(
+    frame: pd.DataFrame,
+    selected_timestamp: str,
+    predicted_demand_mw: float | None = None,
+    forecast_context: pd.DataFrame | None = None,
+) -> dict:
+    """Explain an observed or forecast hourly point using matched UK data."""
+    try:
+        selected = pd.Timestamp(selected_timestamp)
+    except (TypeError, ValueError):
+        return {"status": "error", "message": "Choose a valid chart timestamp."}
+    if not pd.isna(selected) and selected.tzinfo is not None:
+        selected = selected.tz_convert("Europe/London").tz_localize(None)
+    if pd.isna(selected) or frame.empty or not {"timestamp", "demand_mw"}.issubset(frame.columns):
+        return {"status": "unavailable", "message": "Demand history is not available for this point."}
+
+    data = frame.copy()
+    data["timestamp"] = pd.to_datetime(data["timestamp"], errors="coerce")
+    data["demand_mw"] = pd.to_numeric(data["demand_mw"], errors="coerce")
+    data = data.dropna(subset=["timestamp", "demand_mw"])
+    if data.empty:
+        return {"status": "unavailable", "message": "Demand history is not available for this point."}
+    # Chart points are sampled from the source series; select the nearest available hour.
+    is_forecast = predicted_demand_mw is not None and selected > data["timestamp"].max()
+    if is_forecast:
+        point = pd.Series(dtype=object)
+        context = forecast_context.copy() if forecast_context is not None else pd.DataFrame()
+        if not context.empty and "timestamp" in context.columns:
+            context["timestamp"] = pd.to_datetime(context["timestamp"], errors="coerce")
+            context = context[context["timestamp"].dt.normalize() == selected.normalize()]
+        context_point = context.iloc[0] if not context.empty else point
+        demand_value = _number(predicted_demand_mw)
+    else:
+        nearest_index = (data["timestamp"] - selected).abs().idxmin()
+        point = data.loc[nearest_index]
+        selected = point["timestamp"]
+        context = pd.DataFrame()
+        context_point = point
+        demand_value = _number(point["demand_mw"])
+    selected_date = selected.normalize()
+    hour = int(selected.hour)
+    weekday = int(selected.dayofweek)
+    day_of_year = int(selected.dayofyear)
+
+    data["date_only"] = data["timestamp"].dt.normalize()
+    data["hour"] = data["timestamp"].dt.hour
+    data["weekday"] = data["timestamp"].dt.dayofweek
+    data["day_of_year"] = data["timestamp"].dt.dayofyear
+    daily = data.groupby("date_only", as_index=False).agg(
+        daily_average_demand_mw=("demand_mw", "mean"),
+        daily_peak_demand_mw=("demand_mw", "max"),
+    )
+    circular_day_distance = (data["day_of_year"] - day_of_year + 183) % 366 - 183
+    analog_mask = (
+        (data["date_only"] != selected_date)
+        & (data["hour"] == hour)
+        & (data["weekday"] == weekday)
+        & (circular_day_distance.abs() <= 21)
+    )
+    analog_hours = data.loc[analog_mask]
+    analog_days = analog_hours["date_only"].nunique()
+    if analog_days < 5:
+        analog_hours = data.loc[
+            (data["date_only"] != selected_date)
+            & (data["hour"] == hour)
+            & (data["weekday"] == weekday)
+        ]
+        analog_days = analog_hours["date_only"].nunique()
+    analog_date_values = set(analog_hours["date_only"].tolist())
+    analog_daily = daily[daily["date_only"].isin(analog_date_values)]
+    analog_values = analog_hours["demand_mw"].dropna()
+    typical = _number(analog_values.median()) if len(analog_values) >= 5 else None
+    demand = demand_value
+    typical_daily = _number(analog_daily["daily_average_demand_mw"].median()) if len(analog_daily) >= 5 else None
+    current_daily = daily.loc[daily["date_only"] == selected_date, "daily_average_demand_mw"]
+    daily_average = _number(current_daily.iloc[0]) if len(current_daily) else None
+    band = [_number(value) for value in analog_values.quantile([0.25, 0.75]).tolist()] if len(analog_values) >= 5 else []
+
+    events = []
+    for column in ("cal_holiday_names", "holiday_name", "cal_event_names"):
+        if column not in data.columns and column not in context_point.index:
+            continue
+        value = context_point.get(column)
+        if pd.notna(value):
+            events.extend(item.strip() for item in str(value).replace(";", ",").split(",") if item.strip())
+    events = list(dict.fromkeys(events))
+    region = None
+    if _flag(context_point.get("cal_is_bank_holiday_england_wales", 0)):
+        region = "England and Wales bank holiday"
+    elif _flag(context_point.get("cal_is_bank_holiday_scotland", 0)):
+        region = "Scotland bank holiday"
+    if not events and _flag(context_point.get("is_holiday", 0)):
+        events = ["a public holiday (name not present in the loaded calendar)"]
+    if not events and _flag(context_point.get("cal_is_major_football", 0)):
+        events = ["a calendar-flagged major football event"]
+    if not events and _flag(context_point.get("cal_is_general_election", 0)):
+        events = ["a calendar-flagged general election"]
+    if not events and _flag(context_point.get("cal_is_covid_lockdown", 0)):
+        events = ["a calendar-flagged COVID-19 lockdown period"]
+
+    event_analog = {}
+    event_mask = pd.Series(False, index=data.index)
+    named_event_columns = [
+        column for column in ("cal_holiday_names", "holiday_name", "cal_event_names")
+        if column in data.columns
+    ]
+    named_events = [
+        name for name in events
+        if not name.startswith("a public holiday") and not name.startswith("a calendar-flagged")
+    ]
+    for name in named_events:
+        for column in named_event_columns:
+            event_mask = event_mask | data[column].fillna("").astype(str).str.contains(
+                re.escape(name), case=False, regex=True
+            )
+    if region == "England and Wales bank holiday" and "cal_is_bank_holiday_england_wales" in data:
+        event_mask = event_mask | pd.to_numeric(data["cal_is_bank_holiday_england_wales"], errors="coerce").fillna(0).ne(0)
+    elif region == "Scotland bank holiday" and "cal_is_bank_holiday_scotland" in data:
+        event_mask = event_mask | pd.to_numeric(data["cal_is_bank_holiday_scotland"], errors="coerce").fillna(0).ne(0)
+    event_hours = data.loc[
+        event_mask & (data["date_only"] != selected_date) & (data["hour"] == hour)
+    ]
+    if event_hours["date_only"].nunique() >= 3:
+        event_values = event_hours.groupby("date_only")["demand_mw"].mean()
+        event_analog = {
+            "typical_demand_mw": _number(event_values.median()),
+            "matched_event_days": int(event_values.index.nunique()),
+            "demand_delta_pct": None,
+        }
+        if demand is not None and event_analog["typical_demand_mw"]:
+            event_analog["demand_delta_pct"] = _number(
+                (demand - event_analog["typical_demand_mw"]) / abs(event_analog["typical_demand_mw"]) * 100
+            )
+
+    weather = {}
+    weather_columns = (
+        ("temperature_2m", "mean_temperature_c", "temperature_delta_c", "mean"),
+        ("precipitation", "precipitation_mm", "precipitation_delta_mm", "sum"),
+        ("wind_speed_10m", "mean_wind_speed_m_s", "wind_speed_delta_m_s", "mean"),
+        ("relative_humidity_2m", "mean_relative_humidity_pct", "humidity_delta_pct", "mean"),
+        ("cloud_cover", "mean_cloud_cover_pct", "cloud_cover_delta_pct", "mean"),
+    )
+    for column, label, delta_key, aggregation in weather_columns:
+        if column not in data.columns:
+            continue
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+        if is_forecast and not context.empty and column in context.columns:
+            context[column] = pd.to_numeric(context[column], errors="coerce")
+            chosen_day = context[column].dropna()
+        else:
+            chosen_day = data.loc[data["date_only"] == selected_date, column].dropna()
+        if aggregation == "sum":
+            daily_weather = data.groupby("date_only")[column].sum(min_count=1).dropna()
+        else:
+            daily_weather = data.groupby("date_only")[column].mean().dropna()
+        analog_weather = daily_weather[daily_weather.index.isin(analog_date_values)]
+        if aggregation == "sum" and column == "precipitation":
+            current_value = _number(chosen_day.sum()) if len(chosen_day) else None
+        else:
+            current_value = _number(chosen_day.mean()) if len(chosen_day) else None
+        typical_value = _number(analog_weather.mean()) if len(analog_weather) >= 5 else None
+        if current_value is not None:
+            weather[label] = current_value
+        if current_value is not None and typical_value is not None:
+            weather[delta_key] = _number(current_value - typical_value)
+
+    economic_labels = {
+        "econ_industrial_production_index_lag1m": "industrial production index (lagged one month)",
+        "econ_gdp_index_lag1m": "GDP index (lagged one month)",
+        "econ_cpi_index_lag1m": "CPI index (lagged one month)",
+        "econ_unemployment_rate_lag1m": "unemployment rate (lagged one month)",
+    }
+    economic_context = []
+    for column, label in economic_labels.items():
+        value = _number(context_point.get(column), 2)
+        if value is not None:
+            economic_context.append({"label": label, "value": value})
+
+    delta_pct = ((demand - typical) / abs(typical) * 100) if demand is not None and typical else None
+    daily_delta_pct = (
+        ((daily_average - typical_daily) / abs(typical_daily) * 100)
+        if daily_average is not None and typical_daily else None
+    )
+    facts = {
+        "timestamp": selected.strftime("%Y-%m-%d %H:%M"),
+        "demand_mw": demand,
+        "typical_hourly_demand_mw": typical,
+        "historical_hourly_band_mw": band,
+        "demand_vs_typical_pct": _number(delta_pct, 1),
+        "matched_days": int(analog_days),
+        "daily_average_demand_mw": None if is_forecast else daily_average,
+        "typical_daily_average_demand_mw": typical_daily,
+        "daily_average_vs_typical_pct": _number(daily_delta_pct, 1),
+        "calendar_events": events,
+        "holiday_region": region,
+        "same_event_comparison": event_analog,
+        "weather_comparison": weather,
+        "economic_context": economic_context,
+        "forecast_point": bool(is_forecast),
+    }
+    statements = _explanation_text_from_facts(facts)
+    final_statements = _llama_reword(facts, statements)
+    llm_requested = bool(os.environ.get("EXPLANATION_LLM_MODEL", "").strip())
+    return {
+        "status": "ready",
+        "timestamp": facts["timestamp"],
+        "headline": f"{'Forecast' if is_forecast else 'Demand'} context for {selected:%A %d %B %Y, %H:%M}",
+        "explanations": final_statements,
+        "evidence": facts,
+        "method": "Compared with the same hour and weekday within 21 calendar days of the year across available years; fell back to all historical same-hour/same-weekday dates if fewer than five dates matched.",
+        "wording_source": (
+            "local Ollama model" if llm_requested and final_statements != statements
+            else "data-driven local rules (Llama not configured or unavailable)" if llm_requested
+            else "data-driven local rules"
+        ),
+        "causality_note": "Observed associations and matched-date comparisons do not establish that weather, holidays, or events caused demand changes.",
+    }
+
+
+def trend_explanation(selected_timestamp: str, predicted_demand_mw: float | None = None) -> dict:
+    context = None
+    if predicted_demand_mw is not None:
+        context = load_database_frame("forecast_feature_data", order_by=("timestamp",))
+        if context is None:
+            path = project_path(FORECAST_FEATURE_PATH)
+            if path.exists():
+                context = pd.read_csv(path, low_memory=False)
+    return build_trend_explanation(load_master(), selected_timestamp, predicted_demand_mw, context)
 
 
 def load_notebook(path: Path) -> dict | None:
@@ -1925,6 +2325,13 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
         return forecast_inputs()
     if path == "/api/explainability":
         return explainability_summary()
+    if path == "/api/trend-explanation":
+        predicted = query.get("predicted_mw", [None])[0]
+        try:
+            predicted = float(predicted) if predicted is not None else None
+        except (TypeError, ValueError):
+            predicted = None
+        return trend_explanation(query.get("timestamp", [""])[0], predicted)
     if path == "/api/model-validation":
         model = query.get("model", ["prophet_v1"])[0]
         return model_validation(model)
