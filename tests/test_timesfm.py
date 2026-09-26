@@ -19,6 +19,7 @@ from models.timesfm.timesfm_utils import (
     calculate_metrics,
     find_hourly_gaps,
     fold_prediction_frame,
+    fold_window_starts,
     load_demand_data,
     prediction_frame,
     prepare_timesfm_input,
@@ -117,6 +118,22 @@ class TimesFmUtilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_fold_windows(frame, times[200], times[280], stride=0)
 
+    def test_fold_window_starts_matches_build_fold_windows(self) -> None:
+        times = pd.date_range("2025-01-01", periods=400, freq="h")
+        frame = pd.DataFrame(
+            {"timestamp": times, "demand_mw": np.arange(400, dtype=np.float32)}
+        )
+        _, windows = fold_window_starts(
+            frame, times[200], times[280], stride=2, max_windows=4
+        )
+        contexts, actuals, targets = build_fold_windows(
+            frame, times[200], times[280], stride=2, max_windows=4
+        )
+        self.assertEqual(len(windows), len(contexts))
+        for (start, target_start, end), context, actual in zip(windows, contexts, actuals):
+            self.assertEqual(target_start - start, len(context))
+            self.assertEqual(end - target_start + 1, len(actual))
+
     def test_metrics_and_shape_validation(self) -> None:
         actual = np.array([1.0, 2.0, 4.0])
         predicted = np.array([2.0, 2.0, 2.0])
@@ -137,6 +154,20 @@ class TimesFmUtilityTests(unittest.TestCase):
         folded = fold_prediction_frame("fold_1", timestamps, actual, predicted)
         self.assertEqual(list(folded["horizon"]), [1, 2, 3])
         self.assertEqual(set(folded["fold"]), {"fold_1"})
+
+    def test_prediction_frame_carries_optional_quantile_columns(self) -> None:
+        timestamps = [pd.date_range("2025-01-01", periods=2, freq="h")]
+        actual = np.array([[1.0, 2.0]])
+        predicted = np.array([[1.5, 2.5]])
+        quantiles = {
+            "p10_demand": np.array([[1.0, 2.0]]),
+            "p90_demand": np.array([[2.0, 3.0]]),
+        }
+        plain = prediction_frame(timestamps, actual, predicted, quantiles=quantiles)
+        self.assertEqual(list(plain["p10_demand"]), [1.0, 2.0])
+        self.assertEqual(list(plain["p90_demand"]), [2.0, 3.0])
+        without = prediction_frame(timestamps, actual, predicted)
+        self.assertNotIn("p10_demand", without.columns)
 
     def test_save_helpers_and_plots(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
@@ -167,11 +198,33 @@ class TimesFmUtilityTests(unittest.TestCase):
             self.assertEqual({path.name for path in (temp / "plots").iterdir()}, expected)
             self.assertTrue(all(path.stat().st_size > 0 for path in (temp / "plots").iterdir()))
 
+    def test_save_predictions_and_plots_with_quantile_band(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            temp = Path(temp_name)
+            timestamps = [pd.date_range("2025-01-01", periods=24, freq="h")]
+            actual = np.arange(24, dtype=float).reshape(1, 24) + 100
+            predicted = actual + 1
+            quantiles = {"p10_demand": predicted - 5, "p90_demand": predicted + 5}
+            saved = save_predictions(
+                timestamps, actual, predicted, temp / "predictions.csv", quantiles=quantiles
+            )
+            self.assertIn("p10_demand", saved.columns)
+            self.assertIn("p90_demand", saved.columns)
+            save_plots(
+                saved,
+                temp / "plots",
+                horizon=24,
+                lower_column="p10_demand",
+                upper_column="p90_demand",
+            )
+            band_plot = temp / "plots" / "actual_vs_timesfm.png"
+            self.assertTrue(band_plot.exists() and band_plot.stat().st_size > 0)
+
     def test_model_comparison_reads_json_and_lowercase_csv(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
-            lstm_dir = root / "artifacts" / "dnn" / "dnn_outputs"
-            prophet_dir = root / "artifacts" / "prophet_tuned"
+            lstm_dir = root / "results" / "dnn" / "dnn_outputs"
+            prophet_dir = root / "results" / "prophet_tuned"
             lstm_dir.mkdir(parents=True)
             prophet_dir.mkdir(parents=True)
             (lstm_dir / "dnn_metrics.json").write_text(
@@ -194,11 +247,34 @@ class TimesFmModelTests(unittest.TestCase):
     def test_generate_forecast_batches_inputs(self) -> None:
         fake = FakeTimesFm()
         contexts = [np.arange(168, dtype=np.float32) + index for index in range(5)]
-        forecast = timesfm_model.generate_forecast(fake, contexts, horizon=24, batch_size=2)
+        forecast, quantiles = timesfm_model.generate_forecast(
+            fake, contexts, horizon=24, batch_size=2
+        )
         self.assertEqual(forecast.shape, (5, 24))
+        self.assertEqual(quantiles.shape, (5, 24, 10))
         self.assertEqual(fake.batch_sizes, [2, 2, 1])
         with self.assertRaises(ValueError):
             timesfm_model.generate_forecast(fake, [])
+
+    def test_generate_forecast_returns_none_quantiles_when_model_omits_them(self) -> None:
+        class NoQuantileModel:
+            def forecast(self, horizon, inputs):
+                return np.zeros((len(inputs), horizon)), None
+
+        forecast, quantiles = timesfm_model.generate_forecast(
+            NoQuantileModel(), [np.ones(168)], horizon=24, batch_size=8
+        )
+        self.assertEqual(forecast.shape, (1, 24))
+        self.assertIsNone(quantiles)
+
+    def test_quantile_columns_from_forecast_maps_named_channels(self) -> None:
+        quantile_forecast = np.arange(2 * 3 * 10, dtype=np.float32).reshape(2, 3, 10)
+        columns = timesfm_model.quantile_columns_from_forecast(quantile_forecast)
+        self.assertEqual(set(columns), {"p10_demand", "p50_demand", "p90_demand"})
+        np.testing.assert_array_equal(columns["p10_demand"], quantile_forecast[:, :, 1])
+        np.testing.assert_array_equal(columns["p50_demand"], quantile_forecast[:, :, 5])
+        np.testing.assert_array_equal(columns["p90_demand"], quantile_forecast[:, :, 9])
+        self.assertEqual(timesfm_model.quantile_columns_from_forecast(None), {})
 
     def test_generate_forecast_rejects_wrong_model_shape(self) -> None:
         class BadModel:
@@ -283,6 +359,14 @@ class TimesFmModelTests(unittest.TestCase):
             self.assertEqual(len(predictions), int(fold_metrics["samples"].sum()) * 24)
             self.assertTrue((results / "timesfm_evaluation_results.csv").exists())
             self.assertTrue((results / "model_comparison_timesfm.csv").exists())
+            # The quantile head is on by default (FakeTimesFm always returns
+            # quantiles); the prediction interval should ride along in the
+            # same CSV rather than being computed and discarded.
+            for column in ("p10_demand", "p50_demand", "p90_demand"):
+                self.assertIn(column, predictions.columns)
+            self.assertTrue((predictions["p10_demand"] <= predictions["p90_demand"]).all())
+            band_plot = results / "plots" / "timesfm" / "actual_vs_timesfm.png"
+            self.assertTrue(band_plot.exists() and band_plot.stat().st_size > 0)
 
 
 if __name__ == "__main__":

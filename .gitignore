@@ -41,6 +41,7 @@ artifacts/prophet_baseline/prophet_model.json
 # Logs
 *.log
 logs/
+lightning_logs/
 
 # OS/editor files
 .DS_Store
@@ -49,5 +50,7 @@ desktop.ini
 .vscode/
 .idea/
 
-# results
-results/
+# Generated results are local except for the current deployment forecast.
+results/*
+!results/fast_predictions/
+!results/fast_predictions/**

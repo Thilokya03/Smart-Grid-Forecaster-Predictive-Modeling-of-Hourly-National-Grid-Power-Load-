@@ -7,7 +7,7 @@ on:
       - ".github/workflows/update-forecast-data.yml"
       - "weather_pipeline/**"
       - "uk_training_data_prep/**"
-      - "ml_training/fast_gap_fill_and_forecast.py"
+      - "models/prophet/fast_gap_fill_and_forecast.py"
       - "ui/pipeline_runner.py"
       - "ui/pipeline_health.py"
       - "requirements-render.txt"
@@ -63,7 +63,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "$PIPELINE_OUTCOME" = "success" ]; then
-            git add -A -- data artifacts
+            git add -A -- data artifacts results/fast_predictions
           else
             # Publish diagnostics without replacing the last forecast with a partial run.
             git add -A -- artifacts/pipeline_status

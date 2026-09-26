@@ -59,7 +59,7 @@ class ProjectAssetTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(check.returncode, 0, check.stderr)
-        module = importlib.import_module("scripts.lstm_4fold_cv")
+        module = importlib.import_module("models.lstm.lstm_4fold_cv")
         self.assertTrue(callable(module.cli))
 
     def test_documentation_exists(self) -> None:

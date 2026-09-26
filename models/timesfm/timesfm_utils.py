@@ -110,6 +110,54 @@ def build_forecast_windows(
     return contexts, actuals, timestamps
 
 
+def fold_window_starts(
+    frame: pd.DataFrame,
+    validation_start: pd.Timestamp,
+    validation_end: pd.Timestamp,
+    context_length: int = 168,
+    horizon: int = 24,
+    stride: int = 1,
+    max_windows: int | None = None,
+) -> tuple[pd.Series, list[tuple[int, int, int]]]:
+    """Return the chronological timestamps and valid (start, target_start, end)
+    row-index triples for one fold.
+
+    This is the shared window-selection logic behind `build_fold_windows`. It
+    is exposed separately so other callers -- e.g. a covariate explainability
+    pass that needs to slice extra feature columns using the exact same
+    windows -- can reuse it instead of re-deriving window boundaries and
+    risking the two going out of sync.
+    """
+    if context_length <= 0 or horizon <= 0 or stride <= 0:
+        raise ValueError("context_length, horizon, and stride must be positive.")
+    validation_start = pd.Timestamp(validation_start)
+    validation_end = pd.Timestamp(validation_end)
+    if validation_start > validation_end:
+        raise ValueError("validation_start must not be after validation_end.")
+
+    times = pd.to_datetime(frame[TIMESTAMP_COLUMN]).reset_index(drop=True)
+    bad_step = times.diff().ne(pd.Timedelta(hours=1)).to_numpy(dtype=np.int64)
+    bad_step[0] = 0
+    cumulative_bad_steps = np.cumsum(bad_step)
+
+    candidate_targets = np.flatnonzero(
+        (times >= validation_start).to_numpy()
+        & (times <= validation_end).to_numpy()
+    )
+    windows: list[tuple[int, int, int]] = []
+    for target_start in candidate_targets[::stride]:
+        start = int(target_start) - context_length
+        end = int(target_start) + horizon - 1
+        if start < 0 or end >= len(frame) or times.iloc[end] > validation_end:
+            continue
+        if cumulative_bad_steps[end] - cumulative_bad_steps[start] != 0:
+            continue
+        windows.append((start, int(target_start), end))
+        if max_windows is not None and len(windows) >= max_windows:
+            break
+    return times, windows
+
+
 def build_fold_windows(
     frame: pd.DataFrame,
     validation_start: pd.Timestamp,
@@ -120,44 +168,28 @@ def build_fold_windows(
     max_windows: int | None = None,
 ) -> tuple[list[np.ndarray], list[np.ndarray], list[pd.DatetimeIndex]]:
     """Build continuous windows whose complete target lies inside one fold."""
-    if context_length <= 0 or horizon <= 0 or stride <= 0:
-        raise ValueError("context_length, horizon, and stride must be positive.")
-    validation_start = pd.Timestamp(validation_start)
-    validation_end = pd.Timestamp(validation_end)
-    if validation_start > validation_end:
-        raise ValueError("validation_start must not be after validation_end.")
-
-    times = pd.to_datetime(frame[TIMESTAMP_COLUMN]).reset_index(drop=True)
-    values = frame[TARGET_COLUMN].to_numpy(dtype=np.float32)
-    bad_step = times.diff().ne(pd.Timedelta(hours=1)).to_numpy(dtype=np.int64)
-    bad_step[0] = 0
-    cumulative_bad_steps = np.cumsum(bad_step)
-
-    candidate_targets = np.flatnonzero(
-        (times >= validation_start).to_numpy()
-        & (times <= validation_end).to_numpy()
+    times, windows = fold_window_starts(
+        frame,
+        validation_start,
+        validation_end,
+        context_length=context_length,
+        horizon=horizon,
+        stride=stride,
+        max_windows=max_windows,
     )
-    contexts: list[np.ndarray] = []
-    actuals: list[np.ndarray] = []
-    timestamps: list[pd.DatetimeIndex] = []
-    for target_start in candidate_targets[::stride]:
-        start = int(target_start) - context_length
-        end = int(target_start) + horizon - 1
-        if start < 0 or end >= len(frame) or times.iloc[end] > validation_end:
-            continue
-        if cumulative_bad_steps[end] - cumulative_bad_steps[start] != 0:
-            continue
-        contexts.append(values[start:target_start].copy())
-        actuals.append(values[target_start : end + 1].copy())
-        timestamps.append(pd.DatetimeIndex(times.iloc[target_start : end + 1]))
-        if max_windows is not None and len(contexts) >= max_windows:
-            break
-
-    if not contexts:
+    if not windows:
         raise ValueError(
             f"No continuous forecast windows found for {validation_start} to "
             f"{validation_end}."
         )
+    values = frame[TARGET_COLUMN].to_numpy(dtype=np.float32)
+    contexts: list[np.ndarray] = []
+    actuals: list[np.ndarray] = []
+    timestamps: list[pd.DatetimeIndex] = []
+    for start, target_start, end in windows:
+        contexts.append(values[start:target_start].copy())
+        actuals.append(values[target_start : end + 1].copy())
+        timestamps.append(pd.DatetimeIndex(times.iloc[target_start : end + 1]))
     return contexts, actuals, timestamps
 
 
@@ -181,7 +213,9 @@ def calculate_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, fl
         "MAE": float(np.mean(np.abs(error))),
         "RMSE": float(np.sqrt(np.mean(np.square(error)))),
         "MAPE": mape,
-        "R2": float(1 - ss_res / ss_tot) if ss_tot else 0.0,
+        # NaN, not 0.0: a constant actual series leaves R2 undefined, and 0.0
+        # reads as a real score in the comparison tables.
+        "R2": float(1 - ss_res / ss_tot) if ss_tot else float("nan"),
     }
 
 
@@ -189,20 +223,29 @@ def prediction_frame(
     timestamps: Iterable[pd.DatetimeIndex],
     actual: np.ndarray,
     predicted: np.ndarray,
+    quantiles: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
-    """Create the required timestamp/actual/predicted long-form output."""
+    """Create the required timestamp/actual/predicted long-form output.
+
+    `quantiles` is an optional {column_name: array} map, each array shaped
+    like `predicted` (n_windows, horizon) -- e.g. {"p10_demand": ..., "p90_demand": ...}
+    -- added as extra columns so a prediction interval travels with the point
+    forecast instead of being computed and discarded upstream.
+    """
+    quantiles = quantiles or {}
     rows = []
     for window_number, window_times in enumerate(timestamps):
         for horizon_index, timestamp in enumerate(window_times):
-            rows.append(
-                {
-                    "timestamp": timestamp,
-                    "actual_demand": float(actual[window_number, horizon_index]),
-                    "predicted_demand": float(
-                        predicted[window_number, horizon_index]
-                    ),
-                }
-            )
+            row = {
+                "timestamp": timestamp,
+                "actual_demand": float(actual[window_number, horizon_index]),
+                "predicted_demand": float(
+                    predicted[window_number, horizon_index]
+                ),
+            }
+            for column_name, values in quantiles.items():
+                row[column_name] = float(values[window_number, horizon_index])
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -211,9 +254,10 @@ def fold_prediction_frame(
     timestamps: Iterable[pd.DatetimeIndex],
     actual: np.ndarray,
     predicted: np.ndarray,
+    quantiles: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """Create fold-labelled predictions for every forecast horizon."""
-    output = prediction_frame(timestamps, actual, predicted)
+    output = prediction_frame(timestamps, actual, predicted, quantiles=quantiles)
     horizon = actual.shape[1]
     output.insert(0, "fold", fold)
     output.insert(2, "horizon", np.tile(np.arange(1, horizon + 1), len(actual)))
@@ -225,11 +269,12 @@ def save_predictions(
     actual: np.ndarray,
     predicted: np.ndarray,
     output_path: str | Path,
+    quantiles: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """Save actual and predicted hourly demand values."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output = prediction_frame(timestamps, actual, predicted)
+    output = prediction_frame(timestamps, actual, predicted, quantiles=quantiles)
     output.to_csv(output_path, index=False)
     return output
 
@@ -324,11 +369,11 @@ def save_model_comparison(
     project_root = Path(project_root)
     rows = [
         _read_json_metrics(
-            project_root / "artifacts" / "dnn" / "dnn_outputs" / "dnn_metrics.json",
+            project_root / "results" / "dnn" / "dnn_outputs" / "dnn_metrics.json",
             "LSTM 4-Fold CV",
         ),
         _read_model_metrics(
-            project_root / "artifacts" / "prophet_tuned" / "validation_metrics.csv",
+            project_root / "results" / "prophet_tuned" / "validation_metrics.csv",
             "Prophet Tuned 4-Fold CV",
         ),
         {"Model": "TimesFM 4-Fold CV", **timesfm_metrics},
@@ -346,10 +391,25 @@ def save_plots(
     prediction_data: pd.DataFrame,
     output_dir: str | Path,
     horizon: int = 24,
+    lower_column: str | None = None,
+    upper_column: str | None = None,
 ) -> None:
-    """Save aggregate, example-horizon, and error visualizations."""
+    """Save aggregate, example-horizon, and error visualizations.
+
+    When `lower_column`/`upper_column` are given and present in
+    `prediction_data`, both plots shade the interval between them as a
+    prediction band. This is optional and off by default so callers that
+    never computed a quantile forecast (or a caller passing pre-existing
+    predictions with no interval) get identical output to before.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    band_available = (
+        lower_column is not None
+        and upper_column is not None
+        and lower_column in prediction_data.columns
+        and upper_column in prediction_data.columns
+    )
 
     if "horizon" in prediction_data:
         sample_source = prediction_data[prediction_data["horizon"] == 1]
@@ -357,6 +417,15 @@ def save_plots(
         sample_source = prediction_data
     sample = sample_source.iloc[: min(len(sample_source), 7 * horizon)]
     fig, ax = plt.subplots(figsize=(13, 5))
+    if band_available:
+        ax.fill_between(
+            sample["timestamp"],
+            sample[lower_column],
+            sample[upper_column],
+            color="tab:orange",
+            alpha=0.2,
+            label="TimesFM 10-90% interval",
+        )
     ax.plot(sample["timestamp"], sample["actual_demand"], label="Actual")
     ax.plot(sample["timestamp"], sample["predicted_demand"], label="TimesFM")
     ax.set(title="Actual vs TimesFM Prediction", ylabel="Demand (MW)")
@@ -368,6 +437,15 @@ def save_plots(
 
     example = prediction_data.iloc[:horizon]
     fig, ax = plt.subplots(figsize=(11, 5))
+    if band_available:
+        ax.fill_between(
+            example["timestamp"],
+            example[lower_column],
+            example[upper_column],
+            color="tab:orange",
+            alpha=0.2,
+            label="TimesFM 10-90% interval",
+        )
     ax.plot(example["timestamp"], example["actual_demand"], marker="o", label="Actual")
     ax.plot(
         example["timestamp"],

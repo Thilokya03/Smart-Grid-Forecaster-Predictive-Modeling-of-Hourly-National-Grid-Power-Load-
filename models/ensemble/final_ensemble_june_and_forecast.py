@@ -11,13 +11,13 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dnn_4fold_cv import (  # noqa: E402
+from models.lstm.dnn_4fold_cv import (  # noqa: E402
     BATCH_SIZE,
     DENSE_SIZE,
     DROPOUT,
@@ -38,7 +38,7 @@ from dnn_4fold_cv import (  # noqa: E402
 
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
 FORECAST_FEATURE_PATH = PROJECT_ROOT / "data" / "processed" / "forecast_feature_data.csv"
-OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "ensemble"
+OUTPUT_DIR = PROJECT_ROOT / "results" / "ensemble"
 TARGET_COLUMN = "demand_mw"
 
 FINAL_TEST_START = pd.Timestamp("2026-06-01 00:00:00")
@@ -46,18 +46,21 @@ FINAL_TEST_END = pd.Timestamp("2026-06-30 23:00:00")
 SEED = 42
 DNN_JUNE_MAX_EPOCHS = EPOCHS
 DNN_FUTURE_MAX_EPOCHS = 5
+# Imported, not redefined, so it can never drift from the window the CV runs
+# reserve. Every model that early-stops must use the same value.
+from models.lstm.lstm_model import INNER_VALIDATION_HOURS as DNN_INNER_VALIDATION_HOURS  # noqa: E402
 SARIMAX_MAXITER = 50
 
 CV_METRIC_PATHS = {
-    "XGBoost": PROJECT_ROOT / "artifacts" / "xgboost" / "validation_metrics.csv",
-    "Prophet": PROJECT_ROOT / "artifacts" / "prophet_tuned" / "validation_metrics.csv",
-    "DNN_LSTM": PROJECT_ROOT / "artifacts" / "DNN" / "dnn_outputs" / "dnn_validation_metrics.csv",
-    "SARIMAX": PROJECT_ROOT / "artifacts" / "sarimax" / "sarimax_outputs" / "sarimax_cv_summary.json",
+    "XGBoost": PROJECT_ROOT / "results" / "xgboost" / "validation_metrics.csv",
+    "Prophet": PROJECT_ROOT / "results" / "prophet_tuned" / "validation_metrics.csv",
+    "DNN_LSTM": PROJECT_ROOT / "artifacts" / "dnn" / "dnn_outputs" / "dnn_validation_metrics.csv",
+    "SARIMAX": PROJECT_ROOT / "results" / "sarimax" / "sarimax_outputs" / "sarimax_cv_summary.json",
 }
 
-XGB_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
-PROPHET_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "prophet_tuned" / "prophet_outputs" / "best_prophet_config.json"
-SARIMAX_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "sarimax" / "sarimax_outputs" / "sarimax_order.json"
+XGB_CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
+PROPHET_CONFIG_PATH = PROJECT_ROOT / "results" / "prophet_tuned" / "prophet_outputs" / "best_prophet_config.json"
+SARIMAX_CONFIG_PATH = PROJECT_ROOT / "results" / "sarimax" / "sarimax_outputs" / "sarimax_order.json"
 
 
 def set_seed() -> None:
@@ -144,6 +147,12 @@ def load_cv_metrics() -> pd.DataFrame:
     rows = []
     for model, path in CV_METRIC_PATHS.items():
         if not path.exists():
+            if model == "DNN_LSTM":
+                print(
+                    f"Warning: DNN CV metrics are unavailable at {path}; "
+                    "omitting DNN/LSTM from ensemble weighting.",
+                    flush=True,
+                )
             continue
         if path.suffix == ".json":
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -170,6 +179,29 @@ def load_cv_metrics() -> pd.DataFrame:
     metrics = pd.DataFrame(rows).dropna(subset=["rmse"]).sort_values("rmse").reset_index(drop=True)
     metrics["cv_rank"] = np.arange(1, len(metrics) + 1)
     return metrics
+
+
+def load_final_dnn_june_predictions(
+    data: pd.DataFrame, future_frame: pd.DataFrame | None, fast: bool = False
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Use the separately trained locked-June DNN output; never tune on June here."""
+    path = PROJECT_ROOT / "artifacts" / "dnn" / "final" / "dnn_final_june_predictions.csv"
+    if not path.exists():
+        raise RuntimeError(
+            "DNN CV metrics exist but final locked-June predictions are unavailable. "
+            "Run python ml_training/final_dnn_june_and_forecast.py; DNN will be omitted."
+        )
+    frame = pd.read_csv(path)
+    required = {"target_timestamp", "actual_mw", "predicted_mw"}
+    if not required.issubset(frame.columns):
+        raise RuntimeError(f"Final DNN predictions lack required columns: {sorted(required - set(frame.columns))}")
+    june = frame.rename(columns={"target_timestamp": "timestamp", "actual_mw": TARGET_COLUMN,
+                                 "predicted_mw": "predicted_demand_mw"})
+    june["timestamp"] = pd.to_datetime(june["timestamp"], errors="coerce")
+    june = june.dropna(subset=["timestamp", TARGET_COLUMN, "predicted_demand_mw"])
+    june["model"] = "DNN_LSTM"
+    # Production/future retraining is deliberately not performed by this evaluator.
+    return june, None
 
 
 def inverse_error_weights(metrics: pd.DataFrame, error_column: str = "rmse") -> dict:
@@ -292,33 +324,55 @@ def train_predict_dnn_lstm(
     values = data[[TARGET_COLUMN]].values.astype(np.float32)
     timestamps = data["timestamp"].to_numpy()
 
-    train_mask = data["timestamp"] < FINAL_TEST_START
+    # ------------------------------------------------------------------
+    # June is a locked test period: it may be predicted, never selected on.
+    # Early stopping therefore uses an inner validation week that ends before
+    # June starts, and the scaler is fitted only on data before that week.
+    # ------------------------------------------------------------------
+    inner_start = FINAL_TEST_START - pd.Timedelta(hours=DNN_INNER_VALIDATION_HOURS)
+    inner_end = FINAL_TEST_START - pd.Timedelta(hours=1)
+
     scaler = StandardScaler()
-    scaler.fit(values[train_mask.values])
+    scaler.fit(values[(data["timestamp"] < inner_start).to_numpy()])
     scaled = scaler.transform(values).astype(np.float32)
-    x_train, y_train, x_val, y_val, starts = create_fold_windows(
+
+    # Training targets end before the inner week; validation targets sit inside it.
+    x_train, y_train, x_inner, y_inner, _ = create_fold_windows(
+        scaled, timestamps, inner_start, inner_end
+    )
+    # June windows are built for prediction only and never reach the optimiser.
+    _, _, x_val, y_val, starts = create_fold_windows(
         scaled, timestamps, FINAL_TEST_START, FINAL_TEST_END
     )
     if len(x_val) == 0:
-        raise RuntimeError("No DNN/LSTM June validation windows were created")
+        raise RuntimeError("No DNN/LSTM June windows were created")
+    if len(x_train) == 0 or len(x_inner) == 0:
+        raise RuntimeError(
+            "No DNN/LSTM pre-June training or inner-validation windows were created"
+        )
 
     model = BaselineLSTM().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.MSELoss()
     train_loader = DataLoader(LoadForecastDataset(x_train, y_train), batch_size=BATCH_SIZE, shuffle=False)
+    inner_loader = DataLoader(LoadForecastDataset(x_inner, y_inner), batch_size=BATCH_SIZE, shuffle=False)
     val_loader = DataLoader(LoadForecastDataset(x_val, y_val), batch_size=BATCH_SIZE, shuffle=False)
 
     best_state = None
-    best_val_loss = float("inf")
+    best_inner_loss = float("inf")
     patience_counter = 0
     june_epochs = 2 if fast else DNN_JUNE_MAX_EPOCHS
     future_epochs = 2 if fast else DNN_FUTURE_MAX_EPOCHS
     for epoch in range(1, june_epochs + 1):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss = evaluate_loss(model, val_loader, criterion, device)
-        print(f"DNN/LSTM June epoch {epoch:03d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}", flush=True)
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        inner_loss = evaluate_loss(model, inner_loader, criterion, device)
+        print(
+            f"DNN/LSTM June epoch {epoch:03d} | train_loss={train_loss:.6f} "
+            f"| inner_loss={inner_loss:.6f}",
+            flush=True,
+        )
+        if inner_loss < best_inner_loss:
+            best_inner_loss = inner_loss
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
             patience_counter = 0
         else:
@@ -631,13 +685,12 @@ def main() -> None:
     runners = {
         "XGBoost": train_predict_xgboost,
         "Prophet": train_predict_prophet,
-        "DNN_LSTM": train_predict_dnn_lstm,
+        "DNN_LSTM": load_final_dnn_june_predictions,
         "SARIMAX": train_predict_sarimax,
     }
     future_runners = {
         "XGBoost": forecast_xgboost,
         "Prophet": forecast_prophet,
-        "DNN_LSTM": forecast_dnn_lstm,
     }
 
     errors = {}
@@ -738,8 +791,23 @@ def main() -> None:
     metrics_frame["june_rank"] = np.arange(1, len(metrics_frame) + 1)
     metrics_frame.to_csv(OUTPUT_DIR / "june_all_model_metrics.csv", index=False)
 
+    # An "ensemble" of fewer than two members is a single model wearing the wrong
+    # name. Say so in the summary and on stdout rather than letting a degenerate
+    # run be read as a combined result.
+    is_ensemble = len(ensemble_weights) >= 2
+    degenerate_note = None
+    if not is_ensemble:
+        degenerate_note = (
+            f"NOT AN ENSEMBLE: only {len(selected['model'].tolist())} model(s) were "
+            "available, so these are single-model results. Check "
+            "unavailable_or_failed_models before citing them."
+        )
+
     summary = {
         "method": "Top 3 selected by pre-June CV RMSE; weighted by inverse CV RMSE.",
+        "is_ensemble": is_ensemble,
+        "degenerate_run_warning": degenerate_note,
+        "june_selection": "Inner pre-June validation week only; June never used for selection.",
         "final_holdout_start": str(FINAL_TEST_START),
         "final_holdout_end": str(FINAL_TEST_END),
         "selected_models": selected["model"].tolist(),
@@ -747,6 +815,7 @@ def main() -> None:
         "ensemble_weights_used": ensemble_weights,
         "dnn_june_max_epochs": DNN_JUNE_MAX_EPOCHS,
         "dnn_future_max_epochs": DNN_FUTURE_MAX_EPOCHS,
+        "dnn_inner_validation_hours": DNN_INNER_VALIDATION_HOURS,
         "sarimax_maxiter": SARIMAX_MAXITER,
         "unavailable_or_failed_models": errors,
     }
@@ -757,6 +826,9 @@ def main() -> None:
     print("=" * 70)
     print(metrics_frame.to_string(index=False))
     print()
+    if degenerate_note:
+        print(degenerate_note)
+        print()
     print("Selected by CV:", ", ".join(selected["model"].tolist()))
     print("Weights used:", json.dumps(ensemble_weights or selected_weights, indent=2))
     if errors:

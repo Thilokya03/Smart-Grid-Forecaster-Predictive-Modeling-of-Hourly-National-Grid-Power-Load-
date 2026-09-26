@@ -100,7 +100,13 @@ def forecast_coverage(path: Path) -> dict:
 def pipeline_health(root: Path = PROJECT_ROOT, now=None, auto_enabled=False, interval=6, running=False) -> dict:
     now = now or datetime.now(UTC)
     reports = root / "artifacts" / "pipeline_status"
-    forecast_dir = root / "artifacts" / "fast_predictions"
+    result_forecasts = root / "results" / "fast_predictions"
+    legacy_forecasts = root / "artifacts" / "fast_predictions"
+    forecast_dir = (
+        result_forecasts
+        if (result_forecasts / "fast_prediction_summary.json").exists()
+        else legacy_forecasts
+    )
     summary = read_report("fast_prediction_summary", forecast_dir)
     run = read_report("run", reports)
     sources = {name: read_report(name, reports) for name in ("neso", "weather")}

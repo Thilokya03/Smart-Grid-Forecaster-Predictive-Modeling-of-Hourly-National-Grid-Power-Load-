@@ -1,6 +1,6 @@
 import pandas as pd
 
-from ml_training import fast_gap_fill_and_forecast as forecast
+from models.prophet import fast_gap_fill_and_forecast as forecast
 
 
 def test_prediction_features_extend_completely_missing_forecast_window(monkeypatch):

@@ -5,9 +5,9 @@ APP_DIR="${APP_DIR:-$(pwd)}"
 STORAGE_DIR="${STORAGE_DIR:-$APP_DIR/storage}"
 
 if [ "${USE_PERSISTENT_STORAGE:-false}" = "true" ]; then
-  mkdir -p "$STORAGE_DIR/data" "$STORAGE_DIR/artifacts" /input/demand
+  mkdir -p "$STORAGE_DIR/data" "$STORAGE_DIR/artifacts" "$STORAGE_DIR/results" /input/demand
 
-  for name in data artifacts; do
+  for name in data artifacts results; do
     target="$STORAGE_DIR/$name"
     link="$APP_DIR/$name"
 
