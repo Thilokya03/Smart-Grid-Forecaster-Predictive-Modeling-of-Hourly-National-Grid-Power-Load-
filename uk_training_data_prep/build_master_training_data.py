@@ -1,7 +1,13 @@
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
+
+try:
+    from .database import publish_dataframe
+except ImportError:
+    from database import publish_dataframe
 
 LOAD_PATH = Path("data") / "uk_load_hourly.csv"
 WEATHER_PATH = Path("data") / "weather_hourly.csv"
@@ -102,24 +108,6 @@ def get_season_name(month: int) -> str:
     return "autumn"
 
 
-def clean_numeric_columns(frame: pd.DataFrame, exclude: Iterable[str] = ()) -> pd.DataFrame:
-    cleaned = frame.copy()
-    excluded = set(exclude)
-
-    for column in cleaned.columns:
-        if column in excluded:
-            continue
-        if pd.api.types.is_numeric_dtype(cleaned[column]):
-            series = cleaned[column]
-            if series.notna().sum() < 8:
-                continue
-            lower = series.quantile(0.01)
-            upper = series.quantile(0.99)
-            cleaned[column] = series.clip(lower=lower, upper=upper)
-
-    return cleaned
-
-
 def standardize_weather(weather: pd.DataFrame) -> pd.DataFrame:
     cleaned = weather.copy()
     cleaned[TIMESTAMP_COLUMN] = pd.to_datetime(cleaned[TIMESTAMP_COLUMN], errors="coerce")
@@ -134,7 +122,6 @@ def standardize_weather(weather: pd.DataFrame) -> pd.DataFrame:
 
     cleaned = cleaned.sort_values(TIMESTAMP_COLUMN).drop_duplicates(subset=[TIMESTAMP_COLUMN], keep="last")
     cleaned = cleaned.reset_index(drop=True)
-    cleaned = clean_numeric_columns(cleaned, exclude=[TIMESTAMP_COLUMN])
     return cleaned
 
 
@@ -204,7 +191,6 @@ def standardize_economic(economic: pd.DataFrame) -> pd.DataFrame:
     keep_columns = [TIMESTAMP_COLUMN, *numeric_columns]
     cleaned = cleaned[keep_columns].sort_values(TIMESTAMP_COLUMN)
     cleaned = cleaned.drop_duplicates(subset=[TIMESTAMP_COLUMN], keep="last")
-    cleaned = clean_numeric_columns(cleaned, exclude=[TIMESTAMP_COLUMN])
 
     rename_map = {
         column: column if column.startswith("econ_") else f"econ_{column}"
@@ -229,7 +215,18 @@ def merge_datasets(
     if load_column != "demand_mw":
         load_df = load_df.rename(columns={load_column: "demand_mw"})
 
-    load_df = clean_numeric_columns(load_df, exclude=[TIMESTAMP_COLUMN])
+    load_df["demand_mw"] = pd.to_numeric(load_df["demand_mw"], errors="coerce")
+    invalid_demand = load_df["demand_mw"].isna() | ~np.isfinite(load_df["demand_mw"])
+    if invalid_demand.any():
+        raise ValueError(
+            f"Load data contains {int(invalid_demand.sum())} missing or non-finite demand values."
+        )
+    non_positive_demand = load_df["demand_mw"] <= 0
+    if non_positive_demand.any():
+        raise ValueError(
+            f"Load data contains {int(non_positive_demand.sum())} non-positive demand values."
+        )
+
     load_df = add_calendar_features(load_df)
 
     merged = load_df.merge(weather_df, on=TIMESTAMP_COLUMN, how="left", suffixes=("", "_weather"))
@@ -254,6 +251,23 @@ def merge_datasets(
 
     merged = merged.sort_values(TIMESTAMP_COLUMN).reset_index(drop=True)
     return merged
+
+
+def validate_weather_coverage(
+    merged: pd.DataFrame,
+    weather_columns: Iterable[str],
+) -> None:
+    columns = [column for column in weather_columns if column != TIMESTAMP_COLUMN]
+    invalid_rows = merged[columns].isna().any(axis=1) | ~np.isfinite(merged[columns]).all(axis=1)
+    if not invalid_rows.any():
+        return
+    first = merged.loc[invalid_rows, TIMESTAMP_COLUMN].iloc[0]
+    last = merged.loc[invalid_rows, TIMESTAMP_COLUMN].iloc[-1]
+    raise ValueError(
+        "Master dataset has missing weather values or non-finite weather values for "
+        f"{int(invalid_rows.sum())} demand hours from {first} to {last}. "
+        "Run weather_pipeline/repair_weather_gaps.py and rebuild weather data."
+    )
 
 
 def apply_yearly_rolling_window(frame: pd.DataFrame) -> pd.DataFrame:
@@ -304,8 +318,10 @@ def main() -> None:
         print(f"Economic file not found, continuing without it: {economic_path}")
 
     merged = merge_datasets(load_df, weather_df, holidays_df, economic_df)
+    validate_weather_coverage(merged, weather_df.columns)
     merged = apply_yearly_rolling_window(merged)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    publish_dataframe(merged, "master_training_data")
     merged.to_csv(output_path, index=False)
 
     print(f"Saved master training dataset -> {output_path}")

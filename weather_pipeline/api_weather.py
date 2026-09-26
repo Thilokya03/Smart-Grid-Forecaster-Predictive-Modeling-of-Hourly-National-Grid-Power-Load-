@@ -1,5 +1,6 @@
 import sqlite3
 import time
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -7,8 +8,28 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 from requests import RequestException
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
+try:
+    from .uk_weather_config import (
+        HOURLY_VARIABLES,
+        TIMEZONE,
+        UK_AVERAGE_CITY,
+        UK_CITIES,
+    )
+except ImportError:
+    from uk_weather_config import (
+        HOURLY_VARIABLES,
+        TIMEZONE,
+        UK_AVERAGE_CITY,
+        UK_CITIES,
+    )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from ui.pipeline_health import record_source
 
 
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
@@ -19,8 +40,10 @@ DB_PATH = RUNTIME_DIR / "weather_pipeline.db"
 HISTORY_OUTPUT = RUNTIME_DIR / "rolling_historical_weather.csv"
 FORECAST_OUTPUT = RUNTIME_DIR / "rolling_forecast_weather.csv"
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-SLEEP_BETWEEN_CITIES = 0.5
 RUN_BRIDGE_MAINTENANCE_AFTER_UPDATE = True
+WEATHER_CONNECT_TIMEOUT_SECONDS = 15
+WEATHER_READ_TIMEOUT_SECONDS = 60
+WEATHER_RETRY_COUNT = 2
 
 # Keep this as None for real runs. Set it to a value like
 # "2026-07-14 07:15" when you want to test the exact window calculation.
@@ -68,7 +91,12 @@ def fetch_weather_window(city: str, latitude: float, longitude: float) -> pd.Dat
         "timezone": TIMEZONE,
     }
 
-    response = requests.get(FORECAST_API_URL, params=params, timeout=120)
+    with weather_session() as session:
+        response = session.get(
+            FORECAST_API_URL,
+            params=params,
+            timeout=(WEATHER_CONNECT_TIMEOUT_SECONDS, WEATHER_READ_TIMEOUT_SECONDS),
+        )
     response.raise_for_status()
     data = response.json()
 
@@ -80,6 +108,59 @@ def fetch_weather_window(city: str, latitude: float, longitude: float) -> pd.Dat
     df = pd.DataFrame(data["hourly"])
     df["city"] = city
     return clean_weather_frame(df)
+
+
+def weather_session() -> requests.Session:
+    retry = Retry(
+        total=WEATHER_RETRY_COUNT,
+        connect=WEATHER_RETRY_COUNT,
+        read=WEATHER_RETRY_COUNT,
+        status=WEATHER_RETRY_COUNT,
+        backoff_factor=1.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        raise_on_status=False,
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
+def fetch_all_city_weather() -> dict[str, pd.DataFrame]:
+    cities = list(UK_CITIES)
+    params = {
+        "latitude": ",".join(str(UK_CITIES[city][0]) for city in cities),
+        "longitude": ",".join(str(UK_CITIES[city][1]) for city in cities),
+        "hourly": ",".join(HOURLY_VARIABLES),
+        "past_days": 7,
+        "forecast_days": 8,
+        "timezone": TIMEZONE,
+    }
+
+    with weather_session() as session:
+        response = session.get(
+            FORECAST_API_URL,
+            params=params,
+            timeout=(WEATHER_CONNECT_TIMEOUT_SECONDS, WEATHER_READ_TIMEOUT_SECONDS),
+        )
+    response.raise_for_status()
+    payload = response.json()
+    results = payload if isinstance(payload, list) else [payload]
+    if len(results) != len(cities):
+        raise RuntimeError(
+            f"Weather API returned {len(results)} locations; expected {len(cities)}."
+        )
+
+    frames = {}
+    for city, data in zip(cities, results):
+        if data.get("error"):
+            raise RuntimeError(data.get("reason", data))
+        if "hourly" not in data:
+            raise RuntimeError(f"No hourly data returned for {city}.")
+        frame = pd.DataFrame(data["hourly"])
+        frame["city"] = city
+        frames[city] = clean_weather_frame(frame)
+    return frames
 
 
 def clean_weather_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -240,7 +321,7 @@ def validate_window(
     actual_rows = len(df)
 
     if actual_rows != expected_rows:
-        print(
+        raise ValueError(
             f"Warning: {window_name} has {actual_rows:,} rows; "
             f"expected {expected_rows:,}."
         )
@@ -248,7 +329,7 @@ def validate_window(
     actual_timestamps = pd.DatetimeIndex(df["timestamp"].drop_duplicates().sort_values())
     missing_timestamps = expected_timestamps.difference(actual_timestamps)
     if len(missing_timestamps) > 0:
-        print(
+        raise ValueError(
             f"Warning: {window_name} is missing {len(missing_timestamps)} hourly "
             f"timestamps. First missing: {missing_timestamps[0]}"
         )
@@ -262,25 +343,27 @@ def export_window(df: pd.DataFrame, output_path: Path) -> None:
 
 def average_city_weather(df: pd.DataFrame, source: str) -> pd.DataFrame:
     averaged = (
-        df.groupby("timestamp", as_index=False)[HOURLY_VARIABLES]
+        df.groupby("timestamp")[HOURLY_VARIABLES]
         .mean()
         .round(3)
+        .reset_index()
     )
     averaged["city"] = UK_AVERAGE_CITY
     averaged["source"] = source
     return averaged[["timestamp", *HOURLY_VARIABLES, "city", "source"]]
 
 
-def update_bridge_from_rolling_history() -> None:
+def update_bridge_from_rolling_history() -> dict:
     if not RUN_BRIDGE_MAINTENANCE_AFTER_UPDATE:
-        return
+        return {"ok": True}
 
     try:
         import maintain_weather_bridge_csv
 
-        maintain_weather_bridge_csv.main()
+        return {"ok": True, **(maintain_weather_bridge_csv.main() or {})}
     except Exception as exc:
         print(f"Warning: bridge maintenance failed after weather update: {exc}")
+        return {"ok": False}
 
 
 def use_cached_weather_outputs(exc: Exception) -> bool:
@@ -290,6 +373,7 @@ def use_cached_weather_outputs(exc: Exception) -> bool:
     print(f"Weather API fetch failed: {exc}")
     print(f"Using cached weather history -> {HISTORY_OUTPUT}")
     print(f"Using cached weather forecast -> {FORECAST_OUTPUT}")
+    record_source("weather", "cached", f"Weather fetch failed ({type(exc).__name__}); cached weather files were used.")
     update_bridge_from_rolling_history()
     return True
 
@@ -308,18 +392,23 @@ def run_once() -> None:
     history_frames = []
     forecast_frames = []
 
-    for city, (latitude, longitude) in UK_CITIES.items():
-        print(f"Fetching {city}...")
-        try:
-            city_weather = fetch_weather_window(city, latitude, longitude)
-        except RequestException as exc:
-            if use_cached_weather_outputs(exc):
-                return
-            raise
+    try:
+        weather_by_city = fetch_all_city_weather()
+    except (RequestException, ValueError, RuntimeError) as exc:
+        if use_cached_weather_outputs(exc):
+            return
+        raise
+
+    for city in UK_CITIES:
+        print(f"Processing {city}...")
+        city_weather = weather_by_city[city]
         history, forecast = split_windows(city_weather, anchor_hour)
+        for frame, start, end, name in ((history, history_start, history_end, "history"), (forecast, forecast_start, forecast_end, "forecast")):
+            validate_window(frame, build_expected_timestamps(start, end), f"{city} {name}")
+            if frame[HOURLY_VARIABLES].isna().any().any():
+                raise ValueError(f"{city} {name} contains missing weather values.")
         history_frames.append(history)
         forecast_frames.append(forecast)
-        time.sleep(SLEEP_BETWEEN_CITIES)
 
     city_history_df = pd.concat(history_frames, ignore_index=True)
     city_forecast_df = pd.concat(forecast_frames, ignore_index=True)
@@ -347,7 +436,8 @@ def run_once() -> None:
     print(f"Saved history CSV -> {HISTORY_OUTPUT}")
     print(f"Saved forecast CSV -> {FORECAST_OUTPUT}")
     print(f"Saved rolling archive DB -> {DB_PATH}")
-    update_bridge_from_rolling_history()
+    bridge = update_bridge_from_rolling_history()
+    record_source("weather", "ok", "Weather fetch succeeded.", forecast_start=str(forecast_start), forecast_end=str(forecast_end), history_end=str(history_end), forecast_rows=int(len(forecast_df)), bridge=bridge)
 
 
 def seconds_until_next_hour() -> float:
@@ -369,4 +459,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        record_source("weather", "failed", f"Weather update failed: {type(exc).__name__}: {exc}")
+        raise

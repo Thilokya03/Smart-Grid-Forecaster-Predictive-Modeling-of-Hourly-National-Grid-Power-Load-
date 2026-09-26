@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -283,9 +285,11 @@ class TimesFmModelTests(unittest.TestCase):
             timesfm_model.generate_forecast(BadModel(), [np.ones(168)])
 
     def test_load_model_uses_expected_checkpoint_and_configuration(self) -> None:
-        import timesfm
-
         calls: dict[str, object] = {}
+
+        class FakeForecastConfig:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
 
         class FakeHubModel:
             @classmethod
@@ -297,7 +301,15 @@ class TimesFmModelTests(unittest.TestCase):
             def compile(self, config):
                 calls["config"] = config
 
-        with patch.object(timesfm, "TimesFM_2p5_200M_torch", FakeHubModel):
+        fake_timesfm = SimpleNamespace(
+            TimesFM_2p5_200M_torch=FakeHubModel,
+            ForecastConfig=FakeForecastConfig,
+        )
+        fake_torch = SimpleNamespace(set_float32_matmul_precision=lambda _: None)
+        with patch.dict(
+            sys.modules,
+            {"timesfm": fake_timesfm, "torch": fake_torch},
+        ):
             loaded = timesfm_model.load_timesfm_model(
                 context_length=168,
                 horizon=24,

@@ -2,17 +2,35 @@ from pathlib import Path
 
 import pandas as pd
 
-from build_master_training_data import (
-    DATE_COLUMN,
-    TIMESTAMP_COLUMN,
-    add_calendar_features,
-    load_economic_csv,
-    load_holiday_csv,
-    load_hourly_csv,
-    standardize_economic,
-    standardize_holidays,
-    standardize_weather,
-)
+try:
+    from .database import publish_dataframe
+except ImportError:
+    from database import publish_dataframe
+
+try:
+    from .build_master_training_data import (
+        DATE_COLUMN,
+        TIMESTAMP_COLUMN,
+        add_calendar_features,
+        load_economic_csv,
+        load_holiday_csv,
+        load_hourly_csv,
+        standardize_economic,
+        standardize_holidays,
+        standardize_weather,
+    )
+except ImportError:
+    from build_master_training_data import (
+        DATE_COLUMN,
+        TIMESTAMP_COLUMN,
+        add_calendar_features,
+        load_economic_csv,
+        load_holiday_csv,
+        load_hourly_csv,
+        standardize_economic,
+        standardize_holidays,
+        standardize_weather,
+    )
 
 
 WEATHER_FORECAST_PATH = Path("data") / "weather_runtime" / "rolling_forecast_weather.csv"
@@ -45,6 +63,7 @@ def build_forecast_features() -> pd.DataFrame:
 def main() -> None:
     forecast = build_forecast_features()
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    publish_dataframe(forecast, "forecast_feature_data")
     forecast.to_csv(OUTPUT_PATH, index=False)
 
     print(f"Saved forecast feature dataset -> {OUTPUT_PATH}")

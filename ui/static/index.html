@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UK Smart Grid Forecaster Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v15">
+  <link rel="stylesheet" href="/static/styles.css?v=2026-09-20-ui-v19-super-admin-health">
 </head>
 <body>
   <div class="shell">
@@ -13,6 +13,7 @@
       <nav>
         <a href="/">Public Forecast</a>
         <a href="/admin">Admin Models</a>
+        <a href="#pipelineHealth">Update Health &amp; Alerts</a>
         <a href="#overview">Overview</a>
         <a href="#eda">Exploratory Analysis</a>
         <a href="#events">Special Days</a>
@@ -27,8 +28,19 @@
     <main>
       <header>
         <h2>Dataset & Forecast Testing UI</h2>
-        <p>Historical demand/weather exploration, recent event checks, weather forecast preview, and pipeline controls. Version: 2026-08-20-ui-v15.</p>
+        <p>Historical demand/weather exploration, recent event checks, weather forecast preview, and pipeline controls. Version: 2026-09-20-ui-v19-super-admin-health.</p>
       </header>
+
+      <section id="pipelineHealth" class="health-section">
+        <div class="health-heading"><h3>Update Health &amp; Alerts</h3><button id="checkPipelineHealth" type="button">Check status</button></div>
+        <p id="pipelineHealthSummary" class="section-note" role="status">Checking source freshness and the last pipeline run...</p>
+        <div id="pipelineAlerts" class="health-alerts" aria-live="polite"></div>
+        <div id="pipelineSourceStatus" class="health-sources"></div>
+        <p id="pipelineSchedule" class="section-note"></p>
+        <p class="section-note"><a href="https://github.com/Kusal-Nirukshan/UK-Smart-Grid-Deploy-Render/actions/workflows/update-forecast-data.yml" target="_blank" rel="noopener">Open GitHub scheduled updates</a></p>
+        <p id="pipelineActionMessage" class="section-note" role="status"></p>
+        <div class="table-wrap"><table id="pipelineSteps"></table></div>
+      </section>
 
       <section id="overview">
         <h3>Overview</h3>
@@ -129,12 +141,12 @@
         <div class="table-wrap"><table id="artifactTable"></table></div>
       </section>
 
-      <section>
+      <section id="lastOutputSection">
         <h3>Last Command Output</h3>
         <pre id="lastOutput">No command has been run from this UI yet.</pre>
       </section>
     </main>
   </div>
-  <script src="/static/app.js?v=2026-08-20-ui-v15"></script>
+  <script src="/static/app.js?v=2026-09-20-ui-v19-super-admin-health"></script>
 </body>
 </html>

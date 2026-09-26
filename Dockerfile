@@ -7,13 +7,16 @@ ENV HOST=0.0.0.0
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-render.txt .
+RUN pip install --no-cache-dir -r requirements-render.txt
 
 COPY weather_pipeline ./weather_pipeline
 COPY uk_training_data_prep ./uk_training_data_prep
 COPY models ./models
 COPY ui ./ui
+COPY data ./data
+COPY artifacts ./artifacts
+COPY results ./results
 COPY scripts/start-render.sh ./scripts/start-render.sh
 COPY README.md .
 
