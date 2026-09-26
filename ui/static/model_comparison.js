@@ -230,6 +230,45 @@ function hideChartTooltip(containerId) {
   if (tooltip) tooltip.style.display = "none";
 }
 
+function xaiDriverChart(containerId, rows) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!rows || !rows.length) { el.innerHTML = "<p>Explanation artifacts have not been generated yet.</p>"; return; }
+  const data = rows.filter((row) => row.unit === "MW effect").slice(0, 15);
+  if (!data.length) { el.innerHTML = "<p>MW attribution artifacts have not been generated yet.</p>"; return; }
+  const width = 900, rowHeight = 29, height = Math.max(120, data.length * rowHeight + 42), left = 255, right = 25;
+  const max = Math.max(1, ...data.map((row) => Number(row.mean_abs_effect) || 0));
+  const bars = data.map((row, index) => {
+    const y = 24 + index * rowHeight, value = Number(row.mean_abs_effect) || 0;
+    const label = `${row.model}: ${row.feature}`;
+    return `<text x="${left - 8}" y="${y + 15}" text-anchor="end" font-size="11">${escapeHtml(label.slice(0, 42))}</text><rect x="${left}" y="${y}" width="${Math.max(1, (width - left - right) * value / max)}" height="18" rx="4" fill="#0b7a64"><title>${escapeHtml(label)} — ${value.toFixed(2)} MW mean |effect|</title></rect><text x="${left + (width - left - right) * value / max + 5}" y="${y + 14}" font-size="10">${value.toFixed(1)} MW</text>`;
+  }).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Largest model-specific forecast drivers">${bars}</svg>`;
+}
+
+async function loadExplainability() {
+  const data = await fetchJson("/api/explainability");
+  cardGrid("xaiComparisonKpis", [
+    {label: "Models with saved explanations", value: `${data.available_models || 0} / ${data.supported_models || 0}`},
+    {label: "Driver signals", value: (data.driver_rows || []).length.toLocaleString()},
+    {label: "Reading the values", value: "Methods differ by model"},
+  ]);
+  xaiDriverChart("xaiComparisonDrivers", data.driver_rows || []);
+  const trend = data.trend_groups && data.trend_groups.XGBoost;
+  if (trend && trend.points.length) {
+    lineChart("xaiComparisonTrend", trend.points, trend.features.map((key, index) => ({key, label: key, color: ["#0b7a64", "#d97706", "#2563eb", "#9333ea", "#dc2626"][index % 5]})), "timestamp");
+  } else {
+    const el = document.getElementById("xaiComparisonTrend");
+    if (el) el.innerHTML = "<p>XGBoost TreeSHAP forecast contributions will appear after forecast artifacts are generated.</p>";
+  }
+  renderTable("xaiEnsembleTable", data.ensemble_weights || [], [
+    {key: "model", label: "Base model"}, {key: "weight_pct", label: "Selected ensemble weight (%)"},
+  ]);
+  renderTable("xaiCoverageTable", data.coverage || [], [
+    {key: "model", label: "Model"}, {key: "method", label: "Explanation method"}, {key: "status", label: "Artifact status"},
+  ]);
+}
+
 async function loadLeaderboard() {
   const data = await fetchJson("/api/notebook-visuals");
   document.getElementById("comparisonMessage").textContent = data.message || "";
@@ -400,7 +439,7 @@ async function loadDnn() {
 }
 
 async function refreshComparisonPage() {
-  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn()]);
+  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn(), loadExplainability()]);
 }
 
 applyStoredTheme();

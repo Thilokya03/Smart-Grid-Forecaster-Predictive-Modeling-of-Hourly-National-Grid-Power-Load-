@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Model Comparison - UK Smart Grid Forecaster</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v17">
+  <link rel="stylesheet" href="/static/styles.css?v=2026-09-26-xai-v1">
 </head>
 <body>
   <div class="shell">
@@ -17,13 +17,14 @@
         <a href="#xgboostResults">XGBoost</a>
         <a href="#sarimaxResults">SARIMAX</a>
         <a href="#dnnResults">DNN/LSTM</a>
+        <a href="#explainability">Explainable AI</a>
         <a href="#notebookEvidence">Notebook Evidence</a>
       </nav>
     </aside>
     <main>
       <header>
         <h2>Model Comparison</h2>
-        <p>Prophet tuned, XGBoost, SARIMAX, and DNN/LSTM comparison from saved artifacts and notebook outputs. Version: 2026-08-20-ui-v17.</p>
+        <p>Prophet tuned, XGBoost, SARIMAX, DNN/LSTM comparison, and model-specific explainability from saved artifacts. Version: 2026-09-26-xai-v1.</p>
       </header>
 
       <section id="leaderboard">
@@ -101,6 +102,20 @@
         <div class="table-wrap"><table id="dnnArtifactTable"></table></div>
       </section>
 
+      <section id="explainability">
+        <h3>Explainable AI</h3>
+        <p>Interpret each model with its appropriate method. Signed MW effects show average sensitivity; relative shares are normalized within a model and should not be read as causal effects.</p>
+        <div id="xaiComparisonKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Model-specific top drivers</h4><div id="xaiComparisonDrivers"></div></div>
+          <div class="chart-card"><h4>XGBoost TreeSHAP across forecast hours</h4><div id="xaiComparisonTrend"></div></div>
+        </div>
+        <h4>Ensemble weights</h4>
+        <div class="table-wrap"><table id="xaiEnsembleTable"></table></div>
+        <h4>Explanation coverage</h4>
+        <div class="table-wrap"><table id="xaiCoverageTable"></table></div>
+      </section>
+
       <section id="notebookEvidence">
         <h3>Notebook Evidence</h3>
         <h4>Notebook Comparison</h4>
@@ -110,6 +125,6 @@
       </section>
     </main>
   </div>
-  <script src="/static/model_comparison.js?v=2026-08-20-ui-v17"></script>
+  <script src="/static/model_comparison.js?v=2026-09-26-xai-v1"></script>
 </body>
 </html>

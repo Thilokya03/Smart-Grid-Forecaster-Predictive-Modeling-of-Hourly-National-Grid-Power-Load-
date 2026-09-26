@@ -10,6 +10,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
 from models.cross_validation import FINAL_TEST_START, VALIDATION_FOLDS, validate_folds
+from models.explainability import history_occlusion_attributions, save_attributions
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
@@ -121,7 +122,7 @@ def main():
     data=data[data.timestamp<FINAL_TEST_START].reset_index(drop=True)
     assert not (data.timestamp>=FINAL_TEST_START).any(),"June 2026 must not enter CV"; assert len(FOLDS)==4
     values=data[["demand_mw"]].to_numpy(np.float32);device=torch.device("cuda" if torch.cuda.is_available() else "cpu");print(f"Device: {device}")
-    fold_rows=[];prediction_rows=[];horizon_frames=[]
+    fold_rows=[];prediction_rows=[];horizon_frames=[];xai_rows=[]
     for fold,outer_start,outer_end in FOLDS:
         # Re-seed per fold so every fold starts from the same initialisation and
         # shuffling stream; otherwise folds 2-4 depend on how many batches earlier
@@ -141,6 +142,8 @@ def main():
             print(f"epoch={epoch:02d} train_loss={tl:.6f} inner_loss={il:.6f} patience={wait}/{PATIENCE}")
             if wait>=PATIENCE: break
         model.load_state_dict(best);torch.save({"model_state_dict":best,"fold":fold,"best_epoch":best_epoch,"selected_on":"inner_validation_only"},CHECKPOINT_DIR/f"fold_{fold}.pt")
+        xai_rows.extend(history_occlusion_attributions(model, xo, scaler.scale_[0], "LSTM", fold))
+        save_attributions(xai_rows, OUTPUT_DIR / "xai_feature_attributions.csv")
         pred_scaled,act_scaled=predict(model,_loader(xo,yo),device); pred,act=_inverse(scaler,pred_scaled),_inverse(scaler,act_scaled)
         metric=calculate_metrics(act,pred);fold_rows.append({"fold":fold,"validation_start":str(outer_start),"validation_end":str(outer_end),**metric,"n_predictions":int(act.size)})
         hz=calculate_horizon_metrics(act,pred);hz.insert(0,"fold",fold);horizon_frames.append(hz)

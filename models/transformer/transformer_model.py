@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import StandardScaler
 
 from models.cross_validation import FINAL_TEST_START, VALIDATION_FOLDS, validate_folds
+from models.explainability import history_occlusion_attributions, save_attributions
 from models.lstm.lstm_model import (
     LoadForecastDataset, create_fold_windows, train_one_epoch,
     evaluate_loss, predict, calculate_metrics, set_seed,
@@ -82,7 +83,7 @@ def run_pipeline(data_path, results_dir, epochs=60, batch_size=32, patience=8,
     timestamps = data.timestamp.to_numpy()
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
-    fold_metrics, frames, history = [], [], []
+    fold_metrics, frames, history, xai_rows = [], [], [], []
     for fold, start, end in VALIDATION_FOLDS:
         set_seed()
         # The outer fold is scored, never selected on. Early stopping uses an inner
@@ -126,6 +127,10 @@ def run_pipeline(data_path, results_dir, epochs=60, batch_size=32, patience=8,
                 if stale >= patience:
                     break
         model.load_state_dict(best_state)
+        xai_rows.extend(history_occlusion_attributions(
+            model, x_val, scaler.scale_[0], MODEL_ID, fold
+        ))
+        save_attributions(xai_rows, results_dir / "xai_feature_attributions.csv")
         predicted, actual = predict(model, val_loader, device)
         predicted = predicted * scaler.scale_[0] + scaler.mean_[0]
         actual = actual * scaler.scale_[0] + scaler.mean_[0]

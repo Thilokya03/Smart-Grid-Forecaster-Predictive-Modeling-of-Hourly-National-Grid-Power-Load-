@@ -256,6 +256,7 @@ PUBLIC_API_PATHS = {
     "/api/events",
     "/api/weather-forecast",
     "/api/forecast-inputs",
+    "/api/explainability",
     "/api/v1/forecast/ml",
 }
 ADMIN_API_PATHS = {
@@ -795,6 +796,111 @@ def forecast_inputs() -> dict:
         ]
 
     return payload
+
+
+def explainability_summary() -> dict:
+    """Collect saved, model-specific explanations for the public dashboard."""
+    candidates = [
+        ("DNN/LSTM", "History block occlusion (24-hour blocks)", "results/dnn/dnn_outputs/xai_feature_attributions.csv"),
+        ("LSTM", "History block occlusion (24-hour blocks)", "artifacts/dnn/dnn_outputs/xai_feature_attributions.csv"),
+        ("LSTM with calendar features", "Feature ablation", "results/lstm_features/calendar_only/xai_feature_attributions.csv"),
+        ("LSTM with weather features", "Feature ablation", "results/lstm_features/with_weather/xai_feature_attributions.csv"),
+        ("Transformer", "History block occlusion (24-hour blocks)", "results/c11_transformer/xai_feature_attributions.csv"),
+        ("Transformer with calendar features", "Feature ablation", "results/transformer_features/calendar_only/xai_feature_attributions.csv"),
+        ("Transformer with weather features", "Feature ablation", "results/transformer_features/with_weather/xai_feature_attributions.csv"),
+        ("Prophet v1", "Forecast component decomposition", "results/prophet/prophet_v1_explanations.csv"),
+        ("Prophet v2", "Forecast component decomposition", "results/prophet_v2/prophet_v2_explanations.csv"),
+        ("Prophet tuned", "Forecast component decomposition", "results/prophet_tuned/prophet_tuned_explanations.csv"),
+        ("XGBoost", "TreeSHAP contributions", "results/xgboost/xgboost_outputs/xgb_public_forecast_explanations.csv"),
+        ("TFT", "Learned variable-selection importance", "results/tft/calendar_only/variable_importance.csv"),
+        ("TFT with weather", "Learned variable-selection importance", "results/tft/with_weather/variable_importance.csv"),
+    ]
+    coverage = []
+    combined = []
+    trend_groups: dict[str, dict] = {}
+    available_names = set()
+
+    for display_name, method, relative_path in candidates:
+        path = project_path(Path(relative_path))
+        ready = path.is_file()
+        coverage.append({"model": display_name, "method": method, "status": "Ready" if ready else "Not generated yet"})
+        if not ready:
+            continue
+        available_names.add(display_name)
+        try:
+            frame = pd.read_csv(path, low_memory=False)
+        except (OSError, ValueError, pd.errors.ParserError):
+            continue
+        if frame.empty:
+            continue
+
+        # Neural ablations, Prophet components, and TreeSHAP all use signed MW effects.
+        feature_key = next((key for key in ("feature", "component", "variable") if key in frame.columns), None)
+        effect_key = next((key for key in ("mean_contribution_mw", "contribution_mw", "importance_pct", "importance") if key in frame.columns), None)
+        if feature_key is None or effect_key is None:
+            continue
+        frame[effect_key] = pd.to_numeric(frame[effect_key], errors="coerce")
+        frame = frame.dropna(subset=[effect_key, feature_key])
+        if frame.empty:
+            continue
+        grouping = frame.groupby(feature_key, dropna=True)[effect_key]
+        for feature, values in grouping:
+            mean_effect = float(values.mean())
+            combined.append({
+                "model": display_name,
+                "feature": str(feature),
+                "mean_effect": mean_effect,
+                "mean_abs_effect": float(values.abs().mean()),
+                "unit": "importance %" if effect_key in {"importance_pct", "importance"} else "MW effect",
+                "method": method,
+            })
+        if "timestamp" in frame.columns and effect_key == "contribution_mw":
+            frame["timestamp"] = frame["timestamp"].astype(str)
+            by_time = frame.groupby(["timestamp", feature_key], dropna=True)[effect_key].mean().unstack(fill_value=0)
+            if not by_time.empty:
+                # Limit chart payload to the latest 72 hours and top 5 drivers overall.
+                top_features = frame.groupby(feature_key)[effect_key].apply(lambda values: values.abs().mean()).nlargest(5).index.tolist()
+                by_time = by_time.reindex(columns=top_features, fill_value=0).tail(72)
+                trend_groups[display_name] = {
+                    "points": [{"timestamp": str(index), **{str(key): float(value) for key, value in row.items()}} for index, row in by_time.iterrows()],
+                    "features": [str(feature) for feature in top_features],
+                }
+
+    # Existing explainers are included in coverage even when their exports use model-specific units.
+    existing_support = [
+        ("TimesFM", "In-context XReg coefficient explanations", (Path("models/timesfm") / "timesfm_explain.py")),
+        ("Weighted ensemble", "Selected model weights", (Path("results/ensemble") / "ensemble_summary.json")),
+    ]
+    ensemble_weights = []
+    for name, method, relative_path in existing_support:
+        path = project_path(relative_path)
+        ready = path.is_file()
+        coverage.append({"model": name, "method": method, "status": "Ready" if ready else "Not generated yet"})
+        if name == "Weighted ensemble" and ready:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                weights = data.get("ensemble_weights_used", data.get("weights", {}))
+                if isinstance(weights, dict):
+                    ensemble_weights = [{"model": str(model), "weight_pct": round(float(weight) * 100, 2)} for model, weight in weights.items()]
+            except (OSError, ValueError, TypeError):
+                ensemble_weights = []
+
+    feature_totals: dict[str, float] = {}
+    for row in combined:
+        feature_totals[row["model"]] = feature_totals.get(row["model"], 0.0) + row["mean_abs_effect"]
+    for row in combined:
+        total = feature_totals.get(row["model"], 0.0)
+        row["relative_share_pct"] = round(100 * row["mean_abs_effect"] / total, 2) if total else 0.0
+        row["mean_effect"] = round(row["mean_effect"], 4)
+        row["mean_abs_effect"] = round(row["mean_abs_effect"], 4)
+    return {
+        "coverage": coverage,
+        "available_models": len(available_names),
+        "supported_models": len(candidates) + len(existing_support),
+        "driver_rows": sorted(combined, key=lambda row: (row["model"], -row["mean_abs_effect"])),
+        "trend_groups": trend_groups,
+        "ensemble_weights": ensemble_weights,
+    }
 
 
 def load_notebook(path: Path) -> dict | None:
@@ -1816,6 +1922,8 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
         return weather_forecast()
     if path == "/api/forecast-inputs":
         return forecast_inputs()
+    if path == "/api/explainability":
+        return explainability_summary()
     if path == "/api/model-validation":
         model = query.get("model", ["prophet_v1"])[0]
         return model_validation(model)
@@ -1955,6 +2063,7 @@ def html_page(last_output: str = "") -> str:
         <a href="#events">Special Days</a>
         <a href="#weatherForecast">Weather Forecast</a>
         <a href="#forecastModels">Forecast Models</a>
+        <a href="#explainability">Explainable AI</a>
         <a href="#modelComparison">Model Comparison</a>
         <a href="#notebookModels">Notebook Logs</a>
         <a href="#pipeline">Pipeline</a>
@@ -1989,6 +2098,17 @@ def html_page(last_output: str = "") -> str:
         <div id="modelMetrics" class="grid"></div>
         <p id="modelMessage"></p>
         <div class="chart-card"><h4>Actual vs Predicted Demand</h4><div id="modelChart"></div></div>
+      </section>
+      <section id="explainability">
+        <h3>Explainable AI: what is driving the forecasts?</h3>
+        <p class="section-note">Model-specific sensitivity and decomposition signals. Positive effects raise the prediction; these are explanatory associations, not causal claims. MW effects are not directly comparable across model methods.</p>
+        <div id="xaiDashboardKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Largest forecast drivers</h4><div id="xaiDashboardDrivers"></div></div>
+          <div class="chart-card"><h4>XGBoost forecast contributions over time</h4><div id="xaiDashboardTrend"></div></div>
+        </div>
+        <h4>Explanation coverage</h4>
+        <div class="table-wrap"><table id="xaiDashboardCoverage"></table></div>
       </section>
       <section id="modelComparison">
         <h3>Model Comparison</h3>
@@ -2078,6 +2198,25 @@ def html_page(last_output: str = "") -> str:
     }}
     async function loadEvents() {{ const data = await fetchJson("/api/events"); document.getElementById("eventsList").innerHTML = data.events.map(event => `<div class="event"><b>${{event.type}}</b><small>${{event.date}}</small><div>${{event.detail}}</div></div>`).join("") || "<p>No notable events found.</p>"; }}
     async function loadForecast() {{ const data = await fetchJson("/api/weather-forecast"); document.getElementById("forecastRange").textContent = `Forecast range: ${{data.range}}`; lineChart("forecastChart", data.points, [{{key:"temperature_2m", label:"Temp C", color:"#c2410c"}}, {{key:"precipitation", label:"Rain mm", color:"#0e7490"}}, {{key:"cloud_cover", label:"Cloud %", color:"#64748b"}}], "timestamp"); }}
+    async function loadExplainability() {{
+      const data = await fetchJson("/api/explainability");
+      document.getElementById("xaiDashboardKpis").innerHTML = [
+        ["Models with explanations", `${{data.available_models || 0}} / ${{data.supported_models || 0}}`],
+        ["Driver signals", (data.driver_rows || []).length.toLocaleString()],
+        ["Interpretation", "Model-specific; non-causal"],
+      ].map(([label, value]) => `<div class="card"><span>${{label}}</span><strong>${{value}}</strong></div>`).join("");
+      const rows = (data.driver_rows || []).filter(row => row.unit === "MW effect");
+      const perModel = new Map();
+      rows.forEach(row => {{ if (!perModel.has(row.model)) perModel.set(row.model, []); perModel.get(row.model).push(row); }});
+      const leaders = [...perModel.values()].flatMap(items => items.sort((a, b) => b.mean_abs_effect - a.mean_abs_effect).slice(0, 2)).slice(0, 12);
+      const width = 900, rowHeight = 30, height = Math.max(120, leaders.length * rowHeight + 42), left = 255, right = 25;
+      const max = Math.max(1, ...leaders.map(row => Number(row.mean_abs_effect) || 0));
+      document.getElementById("xaiDashboardDrivers").innerHTML = leaders.length ? `<svg viewBox="0 0 ${{width}} ${{height}}" role="img" aria-label="Model-specific forecast drivers">${{leaders.map((row, index) => {{ const y = 24 + index * rowHeight, value = Number(row.mean_abs_effect) || 0, label = `${{row.model}}: ${{row.feature}}`, barWidth = Math.max(1, (width-left-right)*value/max); return `<text x="${{left-8}}" y="${{y+15}}" text-anchor="end" font-size="11">${{label.slice(0, 42)}}</text><rect x="${{left}}" y="${{y}}" width="${{barWidth}}" height="18" rx="4" fill="#0b7a64"><title>${{label}} — ${{value.toFixed(2)}} MW mean |effect|</title></rect><text x="${{left+barWidth+5}}" y="${{y+14}}" font-size="10">${{value.toFixed(1)}} MW</text>`; }}).join("")}}</svg>` : "<p>MW attribution artifacts have not been generated yet.</p>";
+      const trend = data.trend_groups && data.trend_groups.XGBoost;
+      if (trend && trend.points.length) lineChart("xaiDashboardTrend", trend.points, trend.features.map((key, index) => ({{key, label:key, color:["#0b7a64", "#d97706", "#2563eb", "#9333ea", "#dc2626"][index % 5]}})), "timestamp");
+      else document.getElementById("xaiDashboardTrend").innerHTML = "<p>XGBoost TreeSHAP trend will appear after forecast explanations are generated.</p>";
+      renderTable("xaiDashboardCoverage", data.coverage || [], [{{key:"model", label:"Model"}}, {{key:"method", label:"Explanation method"}}, {{key:"status", label:"Artifact status"}}]);
+    }}
     async function loadModelValidation() {{
       const data = await fetchJson(`/api/model-validation?model=${{selectedModel}}`);
       const metrics = data.metrics || {{}};
@@ -2118,7 +2257,7 @@ def html_page(last_output: str = "") -> str:
       renderTable("xgboostTuningTable", data.tuning_rows || [], [{{key:"config_id", label:"Config"}}, {{key:"mean_rmse", label:"Mean RMSE"}}, {{key:"mean_mae", label:"Mean MAE"}}, {{key:"mean_r2", label:"Mean R2"}}]);
       renderTable("xgboostParamTable", data.param_rows || [], [{{key:"parameter", label:"Parameter"}}, {{key:"value", label:"Value"}}]);
     }}
-    async function refreshAll() {{ await Promise.all([loadSummary(), loadKpis(), loadCharts(), loadEvents(), loadForecast(), loadModelValidation(), loadNotebookVisuals(), loadXgboostVisuals()]); }}
+    async function refreshAll() {{ await Promise.all([loadSummary(), loadKpis(), loadCharts(), loadEvents(), loadForecast(), loadExplainability(), loadModelValidation(), loadNotebookVisuals(), loadXgboostVisuals()]); }}
     document.querySelectorAll("[data-period]").forEach(button => {{ button.addEventListener("click", async () => {{ selectedPeriod = button.dataset.period; document.querySelectorAll("[data-period]").forEach(b => b.classList.toggle("active", b === button)); await Promise.all([loadKpis(), loadCharts()]); }}); }});
     document.querySelectorAll("[data-model]").forEach(button => {{ button.addEventListener("click", async () => {{ selectedModel = button.dataset.model; document.querySelectorAll("[data-model]").forEach(b => b.classList.toggle("model-active", b === button)); await loadModelValidation(); }}); }});
     refreshAll().catch(error => console.error(error));
