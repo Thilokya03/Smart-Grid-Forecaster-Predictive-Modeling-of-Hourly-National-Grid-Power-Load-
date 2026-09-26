@@ -254,7 +254,7 @@ async function loadExplainability() {
     {label: "Reading the values", value: "Methods differ by model"},
   ]);
   xaiDriverChart("xaiComparisonDrivers", data.driver_rows || []);
-  const trend = data.trend_groups && data.trend_groups.XGBoost;
+  const trend = data.trend_groups && (data.trend_groups["Operational XGBoost"] || data.trend_groups.XGBoost);
   if (trend && trend.points.length) {
     lineChart("xaiComparisonTrend", trend.points, trend.features.map((key, index) => ({key, label: key, color: ["#0b7a64", "#d97706", "#2563eb", "#9333ea", "#dc2626"][index % 5]})), "timestamp");
   } else {

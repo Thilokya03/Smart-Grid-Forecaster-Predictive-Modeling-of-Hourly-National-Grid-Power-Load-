@@ -282,6 +282,8 @@ def recursive_predict(
     features_frame: pd.DataFrame,
     feature_columns: list[str],
     history: pd.DataFrame,
+    explanation_rows: list[dict] | None = None,
+    explanation_scope: str = "",
 ) -> pd.DataFrame:
     known = {
         row[TIMESTAMP_COLUMN]: float(row[TARGET_COLUMN])
@@ -311,7 +313,23 @@ def recursive_predict(
             )
             continue
 
-        prediction = float(model.predict(pd.DataFrame([row[feature_columns].to_dict()]))[0])
+        model_input = pd.DataFrame([row[feature_columns].to_dict()], columns=feature_columns)
+        prediction = float(model.predict(model_input)[0])
+        if explanation_rows is not None:
+            contributions = model.get_booster().predict(
+                xgb.DMatrix(model_input, feature_names=feature_columns), pred_contribs=True
+            )[0]
+            explanation_rows.extend({
+                "model": "Operational XGBoost",
+                "fold": explanation_scope,
+                "arm": "",
+                "timestamp": timestamp,
+                "feature": feature,
+                "contribution_mw": float(contributions[index]),
+                "mean_abs_contribution_mw": abs(float(contributions[index])),
+                "method": "XGBoost TreeSHAP (native pred_contribs)",
+                "scope": explanation_scope,
+            } for index, feature in enumerate(feature_columns))
         known[timestamp] = float(actual) if pd.notna(actual) else prediction
         rows.append(
             {
@@ -455,7 +473,14 @@ def run(args: argparse.Namespace) -> dict:
         sort=False,
     )
     history_plus_backfill[TARGET_COLUMN] = history_plus_backfill[TARGET_COLUMN].fillna(history_plus_backfill["predicted_demand_mw"])
-    forecast = recursive_predict(model, forecast_features, config["features"], history_plus_backfill)
+    forecast_explanations = []
+    forecast = recursive_predict(
+        model, forecast_features, config["features"], history_plus_backfill,
+        explanation_rows=forecast_explanations, explanation_scope="operational public forecast",
+    )
+    pd.DataFrame(forecast_explanations).to_csv(
+        OUTPUT_DIR / "xgb_fast_forecast_explanations.csv", index=False
+    )
 
     backfill_path = OUTPUT_DIR / "gap_fill_predictions.csv"
     legacy_backfill_path = OUTPUT_DIR / "july_to_sept10_predictions.csv"

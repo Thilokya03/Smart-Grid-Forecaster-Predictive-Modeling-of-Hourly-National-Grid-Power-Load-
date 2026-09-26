@@ -811,6 +811,7 @@ def explainability_summary() -> dict:
         ("Prophet v1", "Forecast component decomposition", "results/prophet/prophet_v1_explanations.csv"),
         ("Prophet v2", "Forecast component decomposition", "results/prophet_v2/prophet_v2_explanations.csv"),
         ("Prophet tuned", "Forecast component decomposition", "results/prophet_tuned/prophet_tuned_explanations.csv"),
+        ("Operational XGBoost", "TreeSHAP contributions on the served forecast", "results/fast_predictions/xgb_fast_forecast_explanations.csv"),
         ("XGBoost", "TreeSHAP contributions", "results/xgboost/xgboost_outputs/xgb_public_forecast_explanations.csv"),
         ("TFT", "Learned variable-selection importance", "results/tft/calendar_only/variable_importance.csv"),
         ("TFT with weather", "Learned variable-selection importance", "results/tft/with_weather/variable_importance.csv"),
@@ -2212,7 +2213,7 @@ def html_page(last_output: str = "") -> str:
       const width = 900, rowHeight = 30, height = Math.max(120, leaders.length * rowHeight + 42), left = 255, right = 25;
       const max = Math.max(1, ...leaders.map(row => Number(row.mean_abs_effect) || 0));
       document.getElementById("xaiDashboardDrivers").innerHTML = leaders.length ? `<svg viewBox="0 0 ${{width}} ${{height}}" role="img" aria-label="Model-specific forecast drivers">${{leaders.map((row, index) => {{ const y = 24 + index * rowHeight, value = Number(row.mean_abs_effect) || 0, label = `${{row.model}}: ${{row.feature}}`, barWidth = Math.max(1, (width-left-right)*value/max); return `<text x="${{left-8}}" y="${{y+15}}" text-anchor="end" font-size="11">${{label.slice(0, 42)}}</text><rect x="${{left}}" y="${{y}}" width="${{barWidth}}" height="18" rx="4" fill="#0b7a64"><title>${{label}} — ${{value.toFixed(2)}} MW mean |effect|</title></rect><text x="${{left+barWidth+5}}" y="${{y+14}}" font-size="10">${{value.toFixed(1)}} MW</text>`; }}).join("")}}</svg>` : "<p>MW attribution artifacts have not been generated yet.</p>";
-      const trend = data.trend_groups && data.trend_groups.XGBoost;
+      const trend = data.trend_groups && (data.trend_groups["Operational XGBoost"] || data.trend_groups.XGBoost);
       if (trend && trend.points.length) lineChart("xaiDashboardTrend", trend.points, trend.features.map((key, index) => ({{key, label:key, color:["#0b7a64", "#d97706", "#2563eb", "#9333ea", "#dc2626"][index % 5]}})), "timestamp");
       else document.getElementById("xaiDashboardTrend").innerHTML = "<p>XGBoost TreeSHAP trend will appear after forecast explanations are generated.</p>";
       renderTable("xaiDashboardCoverage", data.coverage || [], [{{key:"model", label:"Model"}}, {{key:"method", label:"Explanation method"}}, {{key:"status", label:"Artifact status"}}]);
