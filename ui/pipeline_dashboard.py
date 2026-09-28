@@ -1074,6 +1074,96 @@ def _llama_reword(facts: dict, statements: list[str]) -> list[str]:
     return statements
 
 
+def _structured_forecast_explanation(facts: dict) -> dict:
+    """Build an evidence-first explanation of one forecast point."""
+    matched_days = int(facts.get("matched_days") or 0)
+    delta = facts.get("demand_vs_typical_pct")
+    demand = facts.get("demand_mw")
+    typical = facts.get("typical_hourly_demand_mw")
+    weather = facts.get("weather_comparison") or {}
+    events = facts.get("calendar_events") or []
+
+    if matched_days >= 20:
+        confidence, confidence_detail = "Strong", f"Based on {matched_days} comparable historical dates."
+    elif matched_days >= 5:
+        confidence, confidence_detail = "Moderate", f"Based on {matched_days} comparable historical dates."
+    else:
+        confidence, confidence_detail = "Limited", "Too few comparable dates for a stable like-for-like benchmark."
+
+    items = []
+    if demand is not None and typical is not None and delta is not None:
+        magnitude = abs(float(delta))
+        direction = "above" if delta > 0 else "below" if delta < 0 else "close to"
+        severity = "high" if magnitude >= 15 else "medium" if magnitude >= 7 else "low"
+        items.append({
+            "id": "demand-pattern",
+            "severity": severity,
+            "category": "Demand pattern",
+            "title": f"Demand is {direction} its historical benchmark",
+            "evidence": f"{demand:,.0f} MW forecast versus {typical:,.0f} MW typical ({delta:+.1f}%).",
+            "reasoning": (
+                f"The selected hour is {magnitude:.1f}% {direction.replace('close to', 'from')} the matched-date median. "
+                "This describes how unusual the point is; it does not identify a cause."
+            ),
+            "interpretation": (
+                "Treat this as a notable demand signal and check adjacent hours before making a planning decision."
+                if severity == "high" else
+                "Use it as supporting context and review the surrounding demand curve before acting."
+            ),
+        })
+
+    unusual_weather = []
+    weather_checks = (
+        ("temperature_delta_c", 1.5, "temperature"),
+        ("precipitation_delta_mm", 1.0, "precipitation"),
+        ("wind_speed_delta_m_s", 5.0, "wind speed"),
+        ("humidity_delta_pct", 10.0, "humidity"),
+        ("cloud_cover_delta_pct", 20.0, "cloud cover"),
+    )
+    for key, threshold, label in weather_checks:
+        value = weather.get(key)
+        if value is not None and abs(float(value)) >= threshold:
+            unusual_weather.append(f"{label} {float(value):+.1f}")
+    if events or unusual_weather:
+        evidence_parts = []
+        if events:
+            evidence_parts.append("Calendar: " + ", ".join(events))
+        if unusual_weather:
+            evidence_parts.append("Weather deltas: " + "; ".join(unusual_weather))
+        items.append({
+            "id": "context-signals",
+            "severity": "medium",
+            "category": "Context",
+            "title": "Context signals deserve a second look",
+            "evidence": ". ".join(evidence_parts) + ".",
+            "reasoning": "The calendar and weather values coincide with this forecast point, but the comparison does not isolate their independent effects.",
+            "interpretation": "Use these signals as supporting context, not to claim that an event or weather condition caused the forecast level.",
+        })
+
+    items.append({
+        "id": "evidence-quality",
+        "severity": "low" if confidence == "Strong" else "medium" if confidence == "Moderate" else "high",
+        "category": "Evidence quality",
+        "title": f"Historical comparison confidence is {confidence.lower()}",
+        "evidence": confidence_detail,
+        "reasoning": "The benchmark matches the same hour and weekday near the same time of year, then broadens only when fewer than five dates are available.",
+        "interpretation": (
+            "Use the comparison as a reliable descriptive benchmark, while retaining the stated non-causality caveat."
+            if confidence == "Strong" else
+            "Present the comparison with visible uncertainty and avoid strong operational conclusions."
+        ),
+    })
+
+    noteworthy = sum(item["severity"] in {"high", "medium"} for item in items)
+    return {
+        "title": "Why this forecast looks this way",
+        "summary": f"{noteworthy} notable signal{'s' if noteworthy != 1 else ''} found in the available evidence.",
+        "confidence": confidence,
+        "confidence_detail": confidence_detail,
+        "items": items,
+    }
+
+
 def build_trend_explanation(
     frame: pd.DataFrame,
     selected_timestamp: str,
@@ -1283,6 +1373,7 @@ def build_trend_explanation(
         "headline": f"{'Forecast' if is_forecast else 'Demand'} context for {selected:%A %d %B %Y, %H:%M}",
         "explanations": final_statements,
         "evidence": facts,
+        "structured_explanation": _structured_forecast_explanation(facts),
         "method": "Compared with the same hour and weekday within 21 calendar days of the year across available years; fell back to all historical same-hour/same-weekday dates if fewer than five dates matched.",
         "wording_source": (
             "local Ollama model" if llm_requested and final_statements != statements

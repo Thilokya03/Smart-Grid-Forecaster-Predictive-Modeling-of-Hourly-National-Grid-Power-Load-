@@ -119,6 +119,26 @@
 .public-page .trend-fact { min-width: 0; padding: 10px; border: 1px solid var(--border-soft); border-radius: 9px; background: var(--surface); }
 .public-page .trend-fact span { display: block; color: var(--text-muted); font-size: 11px; }
 .public-page .trend-fact strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 14px; }
+.public-page .explanation-header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin: 22px 0 12px; padding-top: 18px; border-top: 1px solid var(--border-soft); }
+.public-page .explanation-header h4 { margin: 3px 0 2px; font-size: 19px; }
+.public-page .explanation-header p { margin: 0; color: var(--text-muted); }
+.public-page .explanation-confidence { flex: none; padding: 5px 9px; border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--surface) 80%, var(--accent)); font-size: 11px; font-weight: 700; }
+.public-page .explanation-list { display: grid; gap: 12px; }
+.public-page .explanation-card { padding: 15px; border: 1px solid var(--border-soft); border-left-width: 4px; border-radius: 10px; background: var(--surface); }
+.public-page .explanation-card.severity-high { border-left-color: var(--high-text); }
+.public-page .explanation-card.severity-medium { border-left-color: #b7791f; }
+.public-page .explanation-card.severity-low { border-left-color: var(--accent); }
+.public-page .explanation-card-header { display: flex; gap: 10px; align-items: flex-start; }
+.public-page .explanation-number { display: grid; place-items: center; width: 25px; height: 25px; flex: none; border-radius: 50%; background: var(--surface-muted); color: var(--text-main); font-size: 11px; font-weight: 800; }
+.public-page .explanation-meta { display: block; color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.public-page .explanation-card h5 { margin: 3px 0 0; font-size: 15px; }
+.public-page .explanation-evidence, .public-page .explanation-reasoning, .public-page .explanation-interpretation { margin-top: 12px; padding: 11px 12px; border-radius: 8px; }
+.public-page .explanation-evidence { background: var(--surface-muted); }
+.public-page .explanation-reasoning { background: color-mix(in srgb, var(--surface) 88%, var(--accent)); border: 1px solid color-mix(in srgb, var(--border-soft) 65%, var(--accent)); }
+.public-page .explanation-interpretation { border: 1px solid var(--border-soft); }
+.public-page .explanation-evidence strong, .public-page .explanation-reasoning strong, .public-page .explanation-interpretation strong { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.public-page .explanation-evidence p, .public-page .explanation-reasoning p, .public-page .explanation-interpretation p { margin: 4px 0 0; }
+.public-page [hidden] { display: none !important; }
 .public-page .demand-tag { display: inline-block; padding: 4px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; }
 .public-page .low, .public-page .legend-low { background: var(--low-bg); color: var(--low-text); }
 .public-page .middle, .public-page .legend-middle { background: var(--mid-bg); color: var(--mid-text); }

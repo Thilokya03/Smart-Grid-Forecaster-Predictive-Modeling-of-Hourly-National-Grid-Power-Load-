@@ -267,11 +267,79 @@ function renderTrendExplanation(result) {
     });
     panel.append(grid);
   }
-  (result.explanations || []).forEach(statement => {
-    const paragraph = document.createElement("p");
-    paragraph.textContent = statement;
-    panel.append(paragraph);
-  });
+  const explanationReview = result.structured_explanation;
+  if (explanationReview?.items?.length) {
+    const reviewHeader = document.createElement("div");
+    reviewHeader.className = "explanation-header";
+    const reviewHeading = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "EXPLAINABLE FORECAST";
+    const title = document.createElement("h4");
+    title.textContent = explanationReview.title || "Why this forecast looks this way";
+    const summary = document.createElement("p");
+    summary.textContent = explanationReview.summary || "Explanation based on the available evidence.";
+    reviewHeading.append(eyebrow, title, summary);
+    const confidence = document.createElement("span");
+    confidence.className = "explanation-confidence";
+    confidence.textContent = (explanationReview.confidence || "Limited") + " evidence";
+    reviewHeader.append(reviewHeading, confidence);
+    panel.append(reviewHeader);
+
+    const list = document.createElement("div");
+    list.className = "explanation-list";
+    explanationReview.items.forEach((item, index) => {
+      const card = document.createElement("article");
+      card.className = "explanation-card severity-" + (item.severity || "low");
+      const cardHeader = document.createElement("div");
+      cardHeader.className = "explanation-card-header";
+      const number = document.createElement("span");
+      number.className = "explanation-number";
+      number.textContent = String(index + 1);
+      const heading = document.createElement("div");
+      const meta = document.createElement("span");
+      meta.className = "explanation-meta";
+      meta.textContent = (item.severity || "low") + " signal · " + (item.category || "Review");
+      const itemTitle = document.createElement("h5");
+      itemTitle.textContent = item.title;
+      heading.append(meta, itemTitle);
+      cardHeader.append(number, heading);
+
+      const evidence = document.createElement("div");
+      evidence.className = "explanation-evidence";
+      const evidenceLabel = document.createElement("strong");
+      evidenceLabel.textContent = "Evidence";
+      const evidenceText = document.createElement("p");
+      evidenceText.textContent = item.evidence;
+      evidence.append(evidenceLabel, evidenceText);
+
+      const reasoning = document.createElement("div");
+      reasoning.className = "explanation-reasoning";
+      const reasoningLabel = document.createElement("strong");
+      reasoningLabel.textContent = "Reasoning";
+      const reasoningText = document.createElement("p");
+      reasoningText.textContent = item.reasoning;
+      reasoning.append(reasoningLabel, reasoningText);
+
+      const interpretation = document.createElement("div");
+      interpretation.className = "explanation-interpretation";
+      const interpretationLabel = document.createElement("strong");
+      interpretationLabel.textContent = "How to interpret it";
+      const interpretationText = document.createElement("p");
+      interpretationText.textContent = item.interpretation;
+      interpretation.append(interpretationLabel, interpretationText);
+
+      card.append(cardHeader, evidence, reasoning, interpretation);
+      list.append(card);
+    });
+    panel.append(list);
+  } else {
+    (result.explanations || []).forEach(statement => {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = statement;
+      panel.append(paragraph);
+    });
+  }
   const note = document.createElement("p");
   note.className = "section-note";
   note.textContent = (result.method || "") + " " + (result.causality_note || "") + " Wording: " + (result.wording_source || "data-driven");

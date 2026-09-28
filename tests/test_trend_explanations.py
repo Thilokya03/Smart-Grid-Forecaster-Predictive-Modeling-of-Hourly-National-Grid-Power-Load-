@@ -39,6 +39,12 @@ def test_trend_explanation_uses_matching_dates_and_only_relevant_context(monkeyp
     assert any("not proof" in item for item in result["explanations"])
     assert any("lagged UK economic context" in item for item in result["explanations"])
     assert result["wording_source"] == "data-driven local rules"
+    explanation = result["structured_explanation"]
+    assert explanation["confidence"] == "Strong"
+    assert len(explanation["items"]) >= 2
+    assert explanation["items"][0]["category"] == "Demand pattern"
+    assert all(item["reasoning"] for item in explanation["items"])
+    assert all(item["interpretation"] for item in explanation["items"])
 
 
 def test_trend_explanation_compares_repeated_calendar_events():
@@ -66,6 +72,8 @@ def test_explanation_falls_back_when_there_are_too_few_analogue_dates():
     assert result["status"] == "ready"
     assert result["evidence"]["typical_hourly_demand_mw"] is None
     assert any("not enough matching historical dates" in item for item in result["explanations"])
+    assert result["structured_explanation"]["confidence"] == "Limited"
+    assert result["structured_explanation"]["items"][-1]["category"] == "Evidence quality"
 
 
 def test_forecast_point_uses_selected_forecast_and_future_context():

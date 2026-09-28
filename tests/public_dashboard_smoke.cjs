@@ -16,9 +16,12 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
     page.on('request', req => { if (req.url().includes('/api/')) requests.push(new URL(req.url()).pathname); });
     await page.goto(base);
     await page.locator('#forecastChart svg').waitFor();
+    await page.locator('.explanation-card').first().waitFor();
     await page.waitForFunction(() => !document.querySelector('#refreshForecast').disabled);
     assert.equal(await page.locator('#loadErrors').isVisible(), false);
     assert.equal(await page.locator('.public-kpis .metric').count(), 4);
+    assert.ok(await page.locator('.explanation-card').count() >= 2);
+    assert.match(await page.locator('.explanation-card').first().innerText(), /EVIDENCE[\s\S]*REASONING[\s\S]*HOW TO INTERPRET IT/);
     await page.screenshot({path: path.join(output, 'desktop-overview.png'), fullPage: true});
     await page.getByRole('button', {name: '7 days', exact: true}).click();
     await page.waitForFunction(() => document.querySelector('#forecastMessage').textContent.includes('168 of 168'));
@@ -80,7 +83,7 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
     await page.goto(base + '/forecast/inputs');
     await page.locator('.weather-table tbody tr').first().waitFor();
     assert.ok((await page.locator('#inputKpis').innerText()).includes('Actual demand coverage'));
-    assert.ok(requests.every(route => ['/api/v1/forecast/ml', '/api/weather-forecast'].includes(route)), requests.join(','));
+    assert.ok(requests.every(route => ['/api/v1/forecast/ml', '/api/weather-forecast', '/api/trend-explanation'].includes(route)), requests.join(','));
 
     // A failed new horizon must not leave the old horizon's values under its label.
     await page.goto(base);
