@@ -2,7 +2,7 @@ name: Update forecast data
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
     paths:
       - ".github/workflows/update-forecast-data.yml"
       - "weather_pipeline/**"
@@ -25,7 +25,9 @@ concurrency:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main'
+    # push is already filtered to dev above; schedule/workflow_dispatch always
+    # target dev explicitly via the checkout step's ref, regardless of which
+    # branch GitHub considers the repo default.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -38,6 +40,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
+          ref: dev
           fetch-depth: 0
 
       - name: Set up Python

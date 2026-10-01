@@ -272,7 +272,7 @@ ADMIN_API_PATHS = {
     "/api/xgboost-visuals",
     "/api/sarimax-visuals",
     "/api/dnn-visuals",
-    "/api/explainability",
+    "/api/explainability/drivers",
     "/api/v1/forecast/ml/models",
     "/api/v1/forecast/ml/comparison",
 }
@@ -2572,7 +2572,7 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
         return sarimax_visuals()
     if path == "/api/dnn-visuals":
         return dnn_visuals()
-    if path == "/api/explainability":
+    if path == "/api/explainability/drivers":
         model = query.get("model", ["tft"])[0]
         arm = query.get("arm", ["calendar_only"])[0]
         return explainability_visuals(model, arm)
