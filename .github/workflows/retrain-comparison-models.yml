@@ -1,0 +1,101 @@
+name: Retrain comparison models
+
+# Weekly, not daily: none of these models feed the live public forecast (only
+# the XGBoost fast-path in update-forecast-data.yml does, and that already
+# retrains on every run, several times a day). These five are the CV
+# leaderboard/comparison-page models. They are CPU-trained here (no GPU on
+# hosted runners), not bit-reproducible run to run (see "Runs are not
+# bit-reproducible" in docs/model_comparison_status.md), and the demand/
+# weather relationship they model does not shift meaningfully day to day --
+# the project's own CV folds are month-long for that reason. Retraining them
+# daily would add run-to-run noise to the leaderboard with no corresponding
+# benefit; weekly keeps it current as new data accrues without doing that.
+#
+# SARIMAX and Prophet tuned are intentionally excluded: both only exist as
+# notebooks (no CLI script), so they are not CI-runnable yet.
+
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sunday 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: retrain-comparison-models
+  cancel-in-progress: false
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      max-parallel: 1 # sequential: avoids concurrent-push races on the results/ commit, each leg pushes to dev
+      fail-fast: false
+      matrix:
+        include:
+          - name: lstm
+            script: models.lstm.lstm_model
+            results_dir: artifacts/dnn
+          - name: lstm_features
+            script: models.lstm.lstm_features_cv
+            results_dir: results/lstm_features/calendar_only
+          - name: c11_transformer
+            script: models.transformer.transformer_model
+            results_dir: results/c11_transformer
+          - name: transformer_features
+            script: models.transformer.transformer_features_cv
+            results_dir: results/transformer_features/calendar_only
+          - name: tft
+            script: models.tft.tft_model
+            results_dir: results/tft/calendar_only
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      MPLBACKEND: Agg
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-cpu.txt
+
+      - name: Retrain ${{ matrix.name }}
+        id: train
+        continue-on-error: true
+        run: python -m ${{ matrix.script }}
+
+      - name: Commit updated artifacts
+        env:
+          TRAIN_OUTCOME: ${{ steps.train.outcome }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin dev
+          git stash --include-untracked
+          git checkout dev
+          git pull --ff-only origin dev
+          git stash pop || true
+          if [ "$TRAIN_OUTCOME" = "success" ]; then
+            git add -A -- "${{ matrix.results_dir }}"
+            if git diff --cached --quiet; then
+              echo "No artifact changes for ${{ matrix.name }}."
+            else
+              git commit -m "Weekly retrain: ${{ matrix.name }} [skip ci]"
+              git push origin dev
+            fi
+          else
+            echo "::warning::${{ matrix.name }} retrain failed; previous artifacts kept."
+            exit 1
+          fi

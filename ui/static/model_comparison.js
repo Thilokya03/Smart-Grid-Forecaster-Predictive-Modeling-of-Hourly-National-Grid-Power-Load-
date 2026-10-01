@@ -438,7 +438,7 @@ async function loadDnn() {
   ]);
 }
 
-async function loadExplainability() {
+async function loadExplainabilityDrivers() {
   const modelSelect = document.getElementById("explainModelSelect");
   const armSelect = document.getElementById("explainArmSelect");
   const armLabel = document.getElementById("explainArmLabel");
@@ -449,7 +449,7 @@ async function loadExplainability() {
 
   const params = new URLSearchParams({model});
   if (isTft) params.set("arm", armSelect.value);
-  const data = await fetchJson(`/api/explainability?${params.toString()}`);
+  const data = await fetchJson(`/api/explainability/drivers?${params.toString()}`);
 
   document.getElementById("explainMessage").textContent = data.message || "";
   cardGrid("explainKpis", data.kpis || []);
@@ -484,17 +484,17 @@ async function loadExplainability() {
 }
 
 async function refreshComparisonPage() {
-  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn(), loadExplainability()]);
+  await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn(), loadExplainability(), loadExplainabilityDrivers()]);
 }
 
 document.getElementById("explainModelSelect").addEventListener("change", () => {
-  loadExplainability().catch((error) => {
+  loadExplainabilityDrivers().catch((error) => {
     console.error(error);
     document.getElementById("explainMessage").textContent = `Unable to load explainability data: ${error.message}`;
   });
 });
 document.getElementById("explainArmSelect").addEventListener("change", () => {
-  loadExplainability().catch((error) => {
+  loadExplainabilityDrivers().catch((error) => {
     console.error(error);
     document.getElementById("explainMessage").textContent = `Unable to load explainability data: ${error.message}`;
   });

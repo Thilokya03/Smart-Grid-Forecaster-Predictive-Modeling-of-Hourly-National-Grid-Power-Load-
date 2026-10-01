@@ -3,7 +3,7 @@ services:
     name: uk-weather-forecast-dashboard
     runtime: docker
     plan: free
-    branch: main
+    branch: dev
     autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .
