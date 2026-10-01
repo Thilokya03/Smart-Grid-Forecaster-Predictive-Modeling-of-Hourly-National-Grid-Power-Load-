@@ -47,6 +47,8 @@ section { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; paddi
 section h3 { margin: 0 0 12px; font-size: 17px; }
 section h4 { margin: 14px 0 8px; font-size: 14px; color: #334e68; }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.toolbar select { border: 1px solid #9fb3c8; background: #fff; color: #102a43; padding: 8px 10px; border-radius: 6px; font: inherit; min-height: 38px; }
+.toolbar label { font-size: 13px; font-weight: 700; color: #334e68; }
 .toolbar button, form button { border: 1px solid #9fb3c8; background: #fff; color: #102a43; padding: 9px 11px; border-radius: 6px; cursor: pointer; font-weight: 700; min-height: 38px; }
 .toolbar button.active { background: #0b5cab; color: #fff; border-color: #0b5cab; }
 .toolbar button.model-active { background: #0f766e; color: #fff; border-color: #0f766e; }
