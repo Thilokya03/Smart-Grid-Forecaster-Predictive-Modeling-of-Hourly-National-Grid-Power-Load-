@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import random
+import sys
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,9 @@ import torch.nn as nn
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from models.explainability import history_occlusion_attributions, save_attributions
 
 
 # ============================================================
@@ -541,6 +545,7 @@ def main():
     ].reset_index(drop=True)
 
     timestamps = data["timestamp"].to_numpy()
+    xai_rows = []
 
     demand = data[
         ["demand_mw"]
@@ -769,6 +774,11 @@ def main():
         model.load_state_dict(
             best_model_state
         )
+
+        xai_rows.extend(history_occlusion_attributions(
+            model, x_val, scaler.scale_[0], "DNN/LSTM", fold_name
+        ))
+        save_attributions(xai_rows, OUTPUT_DIR / "xai_feature_attributions.csv")
 
         # ----------------------------------------------------
         # Predictions

@@ -44,6 +44,7 @@ import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 
 from models.cross_validation import FINAL_TEST_START, VALIDATION_FOLDS, validate_folds
+from models.explainability import feature_ablation_attributions, save_attributions
 from models.lstm.lstm_features_cv import LEARNING_RATE_FEATURES, build_features, _batches
 from models.lstm.lstm_model import (
     EPOCHS,
@@ -149,7 +150,7 @@ def run_pipeline(data_path=None, results_dir=None, weather_future=False, epochs=
     if (first_rows < 0).any():
         raise RuntimeError("A window's first target hour is absent from the timestamp index.")
 
-    fold_metrics, frames, history = [], [], []
+    fold_metrics, frames, history, xai_rows = [], [], [], []
     for fold, outer_start, outer_end in VALIDATION_FOLDS:
         set_seed()
         if outer_end >= FINAL_TEST_START:
@@ -215,6 +216,18 @@ def run_pipeline(data_path=None, results_dir=None, weather_future=False, epochs=
                     "selected_on": "inner_validation_only"}, checkpoint_dir / f"fold_{fold}.pt")
         history.append({"fold": fold, "epochs_run": epochs_run, "best_epoch": best_epoch,
                         "best_inner_loss": best_loss})
+
+        explanation_batches = [(xe, xf) for xe, xf, _ in _batches(
+            *outer, EVAL_BATCH_SIZE, shuffle=False
+        )]
+        xai_rows.extend(feature_ablation_attributions(
+            model, explanation_batches,
+            ["demand_history", *encoder_columns],
+            {"demand_history": 0, **{name: i + 1 for i, name in enumerate(encoder_columns)}},
+            {name: i for i, name in enumerate(future_columns)},
+            len(future_columns), demand_scaler.scale_[0], MODEL_ID, fold, arm,
+        ))
+        save_attributions(xai_rows, results_dir / "xai_feature_attributions.csv")
 
         predicted = demand_scaler.inverse_transform(
             _predict(model, outer).cpu().numpy().reshape(-1, 1)).reshape(-1, FORECAST_HORIZON)

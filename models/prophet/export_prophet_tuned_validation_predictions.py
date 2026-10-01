@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 from prophet import Prophet
 
+from models.explainability import prophet_component_attributions
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MASTER_PATH = PROJECT_ROOT / "data" / "processed" / "master_training_data.csv"
@@ -109,6 +111,7 @@ def main() -> None:
     dev_df = df[df["timestamp"] < FINAL_TEST_START].copy()
     all_predictions = []
     fold_metrics = []
+    explanation_rows = []
 
     for fold_name, valid_start, valid_end in SCREENING_FOLDS:
         valid_start = pd.Timestamp(valid_start)
@@ -125,6 +128,10 @@ def main() -> None:
         print(f"{fold_name}: train={len(train):,} valid={len(valid):,}")
         model.fit(train[["ds", "y", *regressors]])
         forecast = model.predict(valid[["ds", *regressors]])
+        explanation_rows.extend(prophet_component_attributions(
+            model, forecast, valid["ds"].reset_index(drop=True), regressors,
+            "Prophet Tuned", fold_name,
+        ))
 
         predictions = valid[["ds", "y"]].merge(
             forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]],
@@ -153,6 +160,9 @@ def main() -> None:
     prediction_frame["yhat_lower"] = prediction_frame["lower_mw"]
     prediction_frame["yhat_upper"] = prediction_frame["upper_mw"]
     prediction_frame.to_csv(PREDICTIONS_PATH, index=False)
+    pd.DataFrame(explanation_rows).to_csv(
+        OUTPUT_DIR / "prophet_tuned_explanations.csv", index=False
+    )
 
     fold_frame = pd.DataFrame(fold_metrics)
     fold_frame = fold_frame[["fold", "mae", "rmse", "mape", "r2"]]
