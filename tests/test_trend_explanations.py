@@ -41,8 +41,10 @@ def test_trend_explanation_uses_matching_dates_and_only_relevant_context(monkeyp
     assert result["wording_source"] == "data-driven local rules"
     explanation = result["structured_explanation"]
     assert explanation["confidence"] == "Strong"
+    assert explanation["title"] == "Why this observation looks this way"
     assert len(explanation["items"]) >= 2
     assert explanation["items"][0]["category"] == "Demand pattern"
+    assert explanation["items"][0]["evidence"].startswith("Observed demand:")
     assert all(item["reasoning"] for item in explanation["items"])
     assert all(item["interpretation"] for item in explanation["items"])
 
@@ -99,6 +101,9 @@ def test_forecast_point_uses_selected_forecast_and_future_context():
     assert result["evidence"]["calendar_events"] == ["Example UK event"]
     assert result["evidence"]["holiday_region"] == "England and Wales bank holiday"
     assert any("The forecast for 18:00" in item for item in result["explanations"])
+    explanation = result["structured_explanation"]
+    assert explanation["title"] == "Why this forecast looks this way"
+    assert explanation["items"][0]["evidence"].startswith("Forecast demand:")
 
 
 def test_trend_explanation_api_passes_selected_timestamp(monkeypatch):

@@ -1082,6 +1082,8 @@ def _structured_forecast_explanation(facts: dict) -> dict:
     typical = facts.get("typical_hourly_demand_mw")
     weather = facts.get("weather_comparison") or {}
     events = facts.get("calendar_events") or []
+    is_forecast = bool(facts.get("forecast_point"))
+    demand_label = "Forecast demand" if is_forecast else "Observed demand"
 
     if matched_days >= 20:
         confidence, confidence_detail = "Strong", f"Based on {matched_days} comparable historical dates."
@@ -1100,7 +1102,7 @@ def _structured_forecast_explanation(facts: dict) -> dict:
             "severity": severity,
             "category": "Demand pattern",
             "title": f"Demand is {direction} its historical benchmark",
-            "evidence": f"{demand:,.0f} MW forecast versus {typical:,.0f} MW typical ({delta:+.1f}%).",
+            "evidence": f"{demand_label}: {demand:,.0f} MW versus {typical:,.0f} MW typical ({delta:+.1f}%).",
             "reasoning": (
                 f"The selected hour is {magnitude:.1f}% {direction.replace('close to', 'from')} the matched-date median. "
                 "This describes how unusual the point is; it does not identify a cause."
@@ -1156,7 +1158,7 @@ def _structured_forecast_explanation(facts: dict) -> dict:
 
     noteworthy = sum(item["severity"] in {"high", "medium"} for item in items)
     return {
-        "title": "Why this forecast looks this way",
+        "title": f"Why this {'forecast' if is_forecast else 'observation'} looks this way",
         "summary": f"{noteworthy} notable signal{'s' if noteworthy != 1 else ''} found in the available evidence.",
         "confidence": confidence,
         "confidence_detail": confidence_detail,
