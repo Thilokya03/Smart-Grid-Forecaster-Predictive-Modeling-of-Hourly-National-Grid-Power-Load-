@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Model Comparison - UK Smart Grid Forecaster</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2026-08-20-ui-v17">
+  <link rel="stylesheet" href="/static/styles.css?v=2026-10-01-ui-v18-explainability">
 </head>
 <body>
   <div class="shell">
@@ -17,13 +17,14 @@
         <a href="#xgboostResults">XGBoost</a>
         <a href="#sarimaxResults">SARIMAX</a>
         <a href="#dnnResults">DNN/LSTM</a>
+        <a href="#explainability">Explainability</a>
         <a href="#notebookEvidence">Notebook Evidence</a>
       </nav>
     </aside>
     <main>
       <header>
         <h2>Model Comparison</h2>
-        <p>Prophet tuned, XGBoost, SARIMAX, and DNN/LSTM comparison from saved artifacts and notebook outputs. Version: 2026-08-20-ui-v17.</p>
+        <p>Prophet tuned, XGBoost, SARIMAX, DNN/LSTM, and explainability comparison from saved artifacts and notebook outputs. Version: 2026-10-01-ui-v18-explainability.</p>
       </header>
 
       <section id="leaderboard">
@@ -101,6 +102,31 @@
         <div class="table-wrap"><table id="dnnArtifactTable"></table></div>
       </section>
 
+      <section id="explainability">
+        <h3>Explainability</h3>
+        <p>Which inputs each model relies on most, read from its own CV artifacts. Not a causal effect
+          estimate &mdash; see the per-model caveat below each chart.</p>
+        <div class="toolbar">
+          <label for="explainModelSelect">Model</label>
+          <select id="explainModelSelect">
+            <option value="tft">TFT (variable-selection gating)</option>
+            <option value="timesfm">TimesFM (covariate regression)</option>
+          </select>
+          <label for="explainArmSelect" id="explainArmLabel">Weather arm</label>
+          <select id="explainArmSelect">
+            <option value="calendar_only">Calendar + past weather (operational)</option>
+            <option value="with_weather">True future weather (upper bound)</option>
+          </select>
+        </div>
+        <p id="explainMessage"></p>
+        <div id="explainKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Top Inputs by Importance</h4><div id="explainChart"></div></div>
+        </div>
+        <h4>Per-Fold Breakdown</h4>
+        <div class="table-wrap"><table id="explainFoldTable"></table></div>
+      </section>
+
       <section id="notebookEvidence">
         <h3>Notebook Evidence</h3>
         <h4>Notebook Comparison</h4>
@@ -110,6 +136,6 @@
       </section>
     </main>
   </div>
-  <script src="/static/model_comparison.js?v=2026-08-20-ui-v17"></script>
+  <script src="/static/model_comparison.js?v=2026-10-01-ui-v18-explainability"></script>
 </body>
 </html>

@@ -61,6 +61,9 @@ DNN_OUTPUT_DIR = first_existing_path(
     Path("artifacts") / "dnn" / "dnn_outputs",
     Path("artifacts") / "DNN" / "dnn_outputs",
 )
+TFT_DIR = Path("results") / "tft"
+TFT_ARMS = {"calendar_only": "Calendar + past weather (operational)", "with_weather": "True future weather (upper bound)"}
+TIMESFM_EXPLANATION_PATH = Path("results") / "timesfm" / "covariate_explanation.json"
 FAST_PREDICTION_DIR = Path("results") / "fast_predictions"
 FAST_FORECAST_PATH = FAST_PREDICTION_DIR / "current_forecast.csv"
 FAST_BACKFILL_PATH = FAST_PREDICTION_DIR / "gap_fill_predictions.csv"
@@ -265,6 +268,7 @@ ADMIN_API_PATHS = {
     "/api/xgboost-visuals",
     "/api/sarimax-visuals",
     "/api/dnn-visuals",
+    "/api/explainability",
     "/api/v1/forecast/ml/models",
     "/api/v1/forecast/ml/comparison",
 }
@@ -1359,6 +1363,136 @@ def dnn_visuals() -> dict:
     }
 
 
+def tft_explainability(arm: str) -> dict:
+    arm = arm if arm in TFT_ARMS else "calendar_only"
+    path = project_path(TFT_DIR / arm / "variable_importance.csv")
+    if not path.exists():
+        return {
+            "available": False,
+            "arms": TFT_ARMS,
+            "selected_arm": arm,
+            "message": f"No variable_importance.csv found for the '{arm}' arm at {TFT_DIR / arm}.",
+        }
+
+    frame = pd.read_csv(path)
+    overall = (
+        frame.groupby(["variable", "channel"], as_index=False)["importance_pct"]
+        .mean()
+        .sort_values("importance_pct", ascending=False)
+    )
+    bar_rows = [
+        {
+            "variable": row["variable"],
+            "channel": row["channel"],
+            "importance_pct": round(float(row["importance_pct"]), 4),
+        }
+        for _, row in overall.head(15).iterrows()
+    ]
+
+    fold_rows = [
+        {
+            "fold": row["fold"],
+            "channel": row["channel"],
+            "variable": row["variable"],
+            "importance_pct": round(float(row["importance_pct"]), 4),
+        }
+        for _, row in frame.sort_values(["fold", "importance_pct"], ascending=[True, False]).iterrows()
+    ]
+
+    kpis = [
+        {"label": "Model", "value": "TFT"},
+        {"label": "Arm", "value": TFT_ARMS[arm]},
+        {"label": "Folds", "value": frame["fold"].nunique()},
+        {"label": "Top Variable", "value": bar_rows[0]["variable"] if bar_rows else "-"},
+    ]
+
+    return {
+        "available": True,
+        "arms": TFT_ARMS,
+        "selected_arm": arm,
+        "kpis": kpis,
+        "bar_rows": bar_rows,
+        "bar_points": bar_rows,
+        "fold_rows": fold_rows,
+        "message": (
+            "TFT variable importance is read from its own gating weights, averaged across the four CV "
+            f"folds ({path}). Higher importance_pct means the model's variable-selection network relied "
+            "on that input more; this is model-internal attention, not a causal weather/demand effect."
+        ),
+    }
+
+
+def timesfm_explainability() -> dict:
+    path = project_path(TIMESFM_EXPLANATION_PATH)
+    if not path.exists():
+        return {
+            "available": False,
+            "message": (
+                f"No covariate_explanation.json found at {TIMESFM_EXPLANATION_PATH}. Generate it with "
+                "python -m models.timesfm.timesfm_explain (requires the timesfm[xreg] extra)."
+            ),
+        }
+
+    with path.open(encoding="utf-8") as file:
+        explanations = json.load(file)
+    if not explanations:
+        return {"available": False, "message": "covariate_explanation.json is empty."}
+
+    covariate_names = sorted({name for item in explanations for name in item.get("coefficients", {}) if name != "intercept"})
+    mean_abs = {
+        name: sum(abs(item["coefficients"].get(name, 0.0)) for item in explanations) / len(explanations)
+        for name in covariate_names
+    }
+    bar_rows = [
+        {"variable": name, "mean_abs_coefficient": round(value, 4)}
+        for name, value in sorted(mean_abs.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+
+    fold_rows = []
+    for item in explanations:
+        ranked = sorted(
+            ((name, value) for name, value in item.get("coefficients", {}).items() if name != "intercept"),
+            key=lambda pair: abs(pair[1]),
+            reverse=True,
+        )
+        top_three = ", ".join(f"{name}={value:+.1f}" for name, value in ranked[:3])
+        fold_rows.append(
+            {
+                "fold": item.get("fold", "-"),
+                "windows": item.get("windows", "-"),
+                "ridge": item.get("ridge", "-"),
+                "top_effects": top_three,
+            }
+        )
+
+    kpis = [
+        {"label": "Model", "value": "TimesFM 2.5 (covariates)"},
+        {"label": "Covariates", "value": len(covariate_names)},
+        {"label": "Folds", "value": len(explanations)},
+        {"label": "Top Variable", "value": bar_rows[0]["variable"] if bar_rows else "-"},
+    ]
+
+    return {
+        "available": True,
+        "kpis": kpis,
+        "bar_rows": bar_rows,
+        "bar_points": bar_rows,
+        "fold_rows": fold_rows,
+        "message": (
+            explanations[0].get("note", "")
+            + " These are in-context regression coefficients TimesFM fits per fold, not a trained "
+            "model's learned weights, and this evaluates perfect-foresight (observed) weather -- see "
+            "docs/model_comparison_status.md for why TimesFM+covariates underperforms plain TimesFM."
+        ),
+    }
+
+
+def explainability_visuals(model: str, arm: str) -> dict:
+    if model == "timesfm":
+        return {"model": "timesfm", **timesfm_explainability()}
+    return {"model": "tft", **tft_explainability(arm)}
+
+
 def model_cv_comparison_rows() -> list[dict]:
     rows = []
     comparison_path = project_path(XGBOOST_OUTPUT_DIR / "prophet_vs_xgboost_cv.csv")
@@ -1829,6 +1963,10 @@ def api_payload(path: str, query: dict[str, list[str]]) -> dict | list:
         return sarimax_visuals()
     if path == "/api/dnn-visuals":
         return dnn_visuals()
+    if path == "/api/explainability":
+        model = query.get("model", ["tft"])[0]
+        arm = query.get("arm", ["calendar_only"])[0]
+        return explainability_visuals(model, arm)
     if path == "/api/v1/forecast/ml/models":
         return ml_model_registry()
     if path == "/api/v1/forecast/ml/comparison":
