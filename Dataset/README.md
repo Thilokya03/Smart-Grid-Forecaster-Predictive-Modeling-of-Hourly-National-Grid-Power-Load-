@@ -28,7 +28,7 @@ load dataset and produces a cleaned, feature-engineered CSV.
 
 ## Key Decisions
 
-### Retain real observations only 
+### Retain real observations only
 The raw data covers only **~10,000 of ~48,160 hours** in its date range (**~20.8%
 coverage**). Reindexing to a full hourly grid and interpolating gaps would fabricate
 ~3.8 synthetic rows for every real one — not defensible for an academic forecasting

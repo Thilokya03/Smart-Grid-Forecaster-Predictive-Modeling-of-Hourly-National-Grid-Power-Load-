@@ -27,4 +27,3 @@ HOURLY_VARIABLES = [
     "wind_direction_10m",
     "shortwave_radiation",
 ]
-
