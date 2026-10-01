@@ -438,9 +438,67 @@ async function loadDnn() {
   ]);
 }
 
+async function loadExplainability() {
+  const modelSelect = document.getElementById("explainModelSelect");
+  const armSelect = document.getElementById("explainArmSelect");
+  const armLabel = document.getElementById("explainArmLabel");
+  const model = modelSelect.value;
+  const isTft = model === "tft";
+  armSelect.style.display = isTft ? "" : "none";
+  armLabel.style.display = isTft ? "" : "none";
+
+  const params = new URLSearchParams({model});
+  if (isTft) params.set("arm", armSelect.value);
+  const data = await fetchJson(`/api/explainability?${params.toString()}`);
+
+  document.getElementById("explainMessage").textContent = data.message || "";
+  cardGrid("explainKpis", data.kpis || []);
+
+  if (data.available === false) {
+    document.getElementById("explainChart").innerHTML = "<p>No explainability data available yet.</p>";
+    renderTable("explainFoldTable", [], []);
+    return;
+  }
+
+  if (isTft) {
+    lineChart("explainChart", data.bar_points || [], [
+      {key: "importance_pct", label: "Importance %", color: "#0b5cab"}
+    ], "variable", {xLabel: "Variable", yLabel: "Importance %"});
+    renderTable("explainFoldTable", data.fold_rows || [], [
+      {key: "fold", label: "Fold"},
+      {key: "channel", label: "Channel"},
+      {key: "variable", label: "Variable"},
+      {key: "importance_pct", label: "Importance %"}
+    ]);
+  } else {
+    lineChart("explainChart", data.bar_points || [], [
+      {key: "mean_abs_coefficient", label: "Mean |coefficient|", color: "#0f766e"}
+    ], "variable", {xLabel: "Covariate", yLabel: "Mean |coefficient| (standardized)"});
+    renderTable("explainFoldTable", data.fold_rows || [], [
+      {key: "fold", label: "Fold"},
+      {key: "windows", label: "Windows"},
+      {key: "ridge", label: "Ridge"},
+      {key: "top_effects", label: "Largest Effects"}
+    ]);
+  }
+}
+
 async function refreshComparisonPage() {
   await Promise.all([loadLeaderboard(), loadProphetTuned(), loadXgboost(), loadSarimax(), loadDnn(), loadExplainability()]);
 }
+
+document.getElementById("explainModelSelect").addEventListener("change", () => {
+  loadExplainability().catch((error) => {
+    console.error(error);
+    document.getElementById("explainMessage").textContent = `Unable to load explainability data: ${error.message}`;
+  });
+});
+document.getElementById("explainArmSelect").addEventListener("change", () => {
+  loadExplainability().catch((error) => {
+    console.error(error);
+    document.getElementById("explainMessage").textContent = `Unable to load explainability data: ${error.message}`;
+  });
+});
 
 applyStoredTheme();
 attachAccessTokenToLinks();

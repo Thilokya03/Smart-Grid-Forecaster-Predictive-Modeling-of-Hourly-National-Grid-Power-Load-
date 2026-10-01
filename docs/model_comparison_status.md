@@ -309,23 +309,54 @@ above for the caveats and "What Needs To Change" for what remains untried.
 
 ## Withdrawn Rows
 
-Previously listed with CV metrics, withdrawn because nothing in this repository
-reproduces them: no configuration file, no result artifact, and in one case no
-code at all.
+Kept out of the leaderboard above — not because the artifacts are missing (an
+earlier version of this doc said so; that was wrong, see below), but because
+none of the three is scored on the same population as the six-model table.
 
-| Model | Previously claimed MAE | Why |
+| Model | Claimed MAE | Artifacts (tracked, reproduce the claimed MAE exactly) |
 |---|---:|---|
-| XGBoost | 834.81 | `results/xgboost/xgboost_outputs/best_xgb_config.json` is absent, so the script cannot run; the last pipeline run recorded it as `blocked`. No XGBoost CV script exists — that script only performs the June test and the serving forecast. |
-| Prophet tuned | 1138.73 | `results/prophet_tuned/prophet_outputs/best_prophet_config.json` is absent; recorded as `blocked`. |
-| SARIMAX | 1583.35 | No SARIMAX training or CV script exists anywhere in the repository, and `results/sarimax/` does not exist. |
+| XGBoost | 834.81 | `artifacts/xgboost/xgboost_outputs/best_xgb_config.json`, `artifacts/xgboost/xgboost-run-and-comparison-with-prophet.ipynb` |
+| Prophet tuned | 1138.73 | `artifacts/prophet_tuned/prophet_outputs/best_prophet_config.json`, `artifacts/prophet_tuned/prophet-model-training-updated.ipynb` |
+| SARIMAX | 1583.35 | `artifacts/sarimax/sarimax_outputs/sarimax_cv_summary.json`, `artifacts/sarimax/sarimax-fair-comparison-4fold.ipynb` |
 
-Do not reinstate a row until the code that produces it is committed and the
-artifacts it writes are present.
+A previous version of this section claimed these configs and, for SARIMAX, the
+training code itself were absent from the repository and cited `results/`
+paths. That check looked in the wrong directory: all three live under
+`artifacts/<model>/`, are committed to git, and each one's tracked config/summary
+reproduces the claimed MAE exactly.
 
-Note also that Prophet predicts each hour once, with no horizon dimension — 720
-scored values per fold against 17,304 for the sequence models. Even once
-reproducible, a Prophet MAE is not directly comparable to the table above: it is
-not an average across horizons 1–24.
+**Why they still don't belong in the CV leaderboard table**, confirmed by
+inspecting each model's saved validation predictions: all three predict one
+value per timestamp — 2,880 rows total across the four folds (744 + 720 + 672 +
+744, one per hour in each validation month) — with no rolling-origin horizon
+dimension, against 17,304 scored points (649–721 windows x 24 horizons per
+fold) for the six-model table. This is the same limitation already noted for
+Prophet below, now confirmed for XGBoost and SARIMAX too: an MAE here is an
+average over one prediction per hour, not an average across horizons 1–24 for
+many overlapping forecast origins, so it is not on the same population as the
+leaderboard above and must not be placed in that table.
+
+A second, separate issue: none of the three notebooks imports the shared
+`models/cross_validation.py` (each hand-copies the same fold date ranges
+instead, which do match) or its `calculate_metrics`. Each defines its own
+metric function, and they are not all identical — notably Prophet tuned's MAPE
+divides by `actual.clip(lower=1)` where the shared definition excludes
+near-zero actuals instead. Reconciling these onto the shared function, not
+just locating the files, would be required before any of the three numbers
+above could be compared on equal terms with each other, let alone with the
+leaderboard.
+
+Also stale: `artifacts/xgboost/xgboost-run-and-comparison-with-prophet.ipynb`
+has a cell with a **hardcoded** "Prophet" comparison result (fold MAEs
+1054.93 / 1192.90 / 1252.37 / 1054.72, mean ≈1138) that is close in mean to but
+not the same per-fold numbers as `best_prophet_config.json` — copy-pasted
+figures, not loaded from any tracked file. Do not treat that cell's numbers as
+a citable Prophet result.
+
+Do not reinstate a row in the main leaderboard until it is scored on the same
+per-origin, per-horizon population as the other six models, using the shared
+`calculate_metrics`. It is already reproducible from the artifacts above; what
+is missing is the horizon-matched scoring, not the files.
 
 ## Known Limitations
 
@@ -377,9 +408,21 @@ number belongs in the CV leaderboard table even once strong.
    already imports `cross_validation` before running, so this closes the gap
    for all of them with one change. Still open: repeated seeds to bound the
    LSTM/Transformer gap.
-2. Commit the XGBoost CV/tuning code and its config, or leave the row withdrawn.
-3. Commit the Prophet tuning code and its config, or leave the row withdrawn.
-4. Commit a SARIMAX script, or leave the row withdrawn permanently.
+2. ~~Commit the XGBoost CV/tuning code and its config, or leave the row
+   withdrawn.~~ Already committed — `artifacts/xgboost/xgboost_outputs/
+   best_xgb_config.json` and the tuning notebook reproduce the claimed 834.81
+   MAE exactly (see Withdrawn Rows, corrected above). Still open: rescore
+   XGBoost on the same per-origin, per-horizon population as the leaderboard,
+   using the shared `calculate_metrics`, before it can be placed in the table.
+3. ~~Commit the Prophet tuning code and its config, or leave the row
+   withdrawn.~~ Already committed — same situation as XGBoost; see Withdrawn
+   Rows. Still open: horizon-matched rescoring with the shared metric
+   function.
+4. ~~Commit a SARIMAX script, or leave the row withdrawn permanently.~~ Already
+   committed — `artifacts/sarimax/sarimax-fair-comparison-4fold.ipynb` and its
+   CV outputs reproduce the claimed 1583.35 MAE exactly; this doc previously
+   said no SARIMAX code existed anywhere, which was wrong. Still open:
+   horizon-matched rescoring with the shared metric function.
 5. ~~Rerun both Prophet single-split scripts now that June is excluded from
    them.~~ Done — see "Single-split experiments are not comparable" above. Both
    remain weak; that is now a finding, not a gap.
