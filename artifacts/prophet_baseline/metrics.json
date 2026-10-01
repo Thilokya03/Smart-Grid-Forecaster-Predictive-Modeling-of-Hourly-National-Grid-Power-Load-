@@ -1,0 +1,44 @@
+{
+  "selected_model": "prophet_daily16_weekly10_cps010",
+  "train_rows": 143880,
+  "validation_rows": 720,
+  "validation_days": 30,
+  "country_holidays": "UK",
+  "regressors": [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "apparent_temperature",
+    "precipitation",
+    "rain",
+    "surface_pressure",
+    "cloud_cover",
+    "wind_speed_10m",
+    "shortwave_radiation",
+    "weekend",
+    "is_holiday",
+    "cal_is_bank_holiday_england_wales",
+    "cal_is_bank_holiday_scotland",
+    "cal_is_event_day",
+    "cal_is_non_working_day",
+    "cal_is_covid_lockdown",
+    "cal_is_general_election",
+    "econ_industrial_production_index_lag1m",
+    "econ_gdp_index_lag1m",
+    "econ_cpi_index_lag1m",
+    "econ_unemployment_rate_lag1m"
+  ],
+  "params": {
+    "name": "prophet_daily16_weekly10_cps010",
+    "daily_fourier_order": 16,
+    "weekly_fourier_order": 10,
+    "yearly_fourier_order": 12,
+    "changepoint_prior_scale": 0.1,
+    "seasonality_mode": "additive"
+  },
+  "metrics": {
+    "mae": 2714.9536,
+    "rmse": 3363.2288,
+    "mape": 12.286,
+    "r2": -0.0632
+  }
+}

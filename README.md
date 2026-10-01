@@ -1,72 +1,319 @@
 # UK Weather Pipeline
 
-This folder downloads weather for 10 UK cities, averages those city values into one hourly `UK_Average` dataset, and keeps the July-onward bridge data updated.
+This project builds a UK hourly demand and weather dataset, trains/serves forecasting outputs, and exposes a dashboard with public, admin, and super-admin views.
 
-## Run Order
+## Project Layout
 
-### 1. Historical base data
+- `weather_pipeline/` - weather download, rolling update, and bridge maintenance scripts
+- `uk_training_data_prep/` - NESO demand, holiday/economic sync, and master dataset build scripts
+- `models/` - all model implementations, training, gap-fill and forecast workflows
+- `ui/` - Python dashboard server and static frontend assets
+- `data/` - generated local datasets
+- `results/` - generated model files, validation outputs, and forecasts
+- `artifacts/` - legacy evaluation outputs and the bundled deployment snapshot
 
-Run this when you need to build or rebuild the long historical weather files up to `2026-06-30`.
+## Normal Update Flow
 
-```powershell
-python weather_data_extraction.py
-```
-
-Outputs:
-
-- `Weather_Data_Britain/<City>.csv`
-- `Weather_Data_Britain/uk_average_weather.csv`
-
-### 2. Bridge backfill from July onward
-
-Run this if the bridge CSV is missing older July-onward historical hours, or when creating the bridge CSV for the first time.
+Run the full latest prediction refresh:
 
 ```powershell
-python bridge_weather_from_july.py
+python uk_training_data_prep\download_latest_neso_demand.py
+python weather_pipeline\api_weather.py
+python uk_training_data_prep\refresh_local_uk_features.py
+python uk_training_data_prep\build_weather_feature_data.py
+python uk_training_data_prep\build_hourly_load_data.py
+python uk_training_data_prep\build_master_training_data.py
+python uk_training_data_prep\build_forecast_feature_data.py
+python -m models.prophet.fast_gap_fill_and_forecast
 ```
 
-Outputs:
+The dashboard super-admin button `Refresh Latest Predictions Now` runs this same flow.
 
-- `july_bridge_weather_data.csv`
-- `july_bridge_last_run.txt`
+## Forecast Outputs
 
-The bridge file stores one averaged `UK_Average` row per hour.
+The fast forecast path backfills from `2026-07-01` to the current UK hour, bridges any NESO demand lag with nowcast values, and writes:
 
-### 3. Rolling current weather update
+- `results/fast_predictions/gap_fill_predictions.csv`
+- `results/fast_predictions/fast_forecast_24h.csv`
+- `results/fast_predictions/fast_forecast_48h.csv`
+- `results/fast_predictions/fast_forecast_72h.csv`
+- `results/fast_predictions/fast_forecast_168h.csv`
+- `results/fast_predictions/detailed_weighted_24h_forecast.csv`
+- `results/fast_predictions/fast_prediction_summary.json`
 
-Run this for the latest 7 days of history and the next 7 days of forecast.
+## Local Dashboard
+
+Run:
 
 ```powershell
-python api_weather.py
+python -m ui.pipeline_dashboard
 ```
 
-Outputs:
+Open:
 
-- `rolling_historical_weather.csv`
-- `rolling_forecast_weather.csv`
-- `weather_pipeline.db`
+```text
+http://127.0.0.1:8765
+```
 
-After each successful update, this script automatically runs bridge maintenance so new confirmed historical rows are added to `july_bridge_weather_data.csv`.
+Access levels:
 
-### 4. Manual bridge maintenance
+- Public: `http://127.0.0.1:8765/`
+- Admin model comparison: `http://127.0.0.1:8765/admin?token=<DASHBOARD_ADMIN_TOKEN>`
+- Super-admin controls: `http://127.0.0.1:8765/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>`
 
-Usually this is handled by `api_weather.py`. Run this manually only if you already have a fresh `rolling_historical_weather.csv` and want to update the bridge without fetching weather again.
+Public pages:
+
+The [public forecast explorer](docs/public_dashboard.md) includes day filters,
+hourly/3-hour/6-hour averages, a demand heatmap, lower-demand planning windows,
+CSV downloads, calculated insights, and saved theme preferences.
+
+- `/`
+- `/forecast`
+- `/forecast/detailed`
+- `/forecast/inputs`
+- `/settings`
+
+Set tokens before exposing the dashboard:
 
 ```powershell
-python maintain_weather_bridge_csv.py
+$env:DASHBOARD_ADMIN_TOKEN = "change-me-admin"
+$env:DASHBOARD_SUPER_ADMIN_TOKEN = "change-me-super"
+python -m ui.pipeline_dashboard
 ```
 
-Outputs:
+## Automatic Predictions
 
-- Updated `july_bridge_weather_data.csv`
-- `july_bridge_last_update.txt`
+Super-admin's **Update Health & Alerts** panel reports source failures, cached
+fallbacks, overdue forecasts, and pipeline progress. See
+[pipeline monitoring and Render update setup](docs/pipeline_monitoring.md).
 
-## Normal Daily Use
+Use these environment variables:
 
-For normal updates, run:
+```text
+DASHBOARD_ADMIN_TOKEN=change-me-admin
+DASHBOARD_SUPER_ADMIN_TOKEN=change-me-super
+AUTO_PREDICTIONS_ENABLED=true
+AUTO_PREDICTION_INTERVAL_HOURS=6
+AUTO_PREDICTION_RUN_ON_START=false
+```
+
+With automatic predictions enabled, the dashboard process runs `Refresh Latest Predictions Now` every 6 hours on UK-time boundaries: `00:00`, `06:00`, `12:00`, and `18:00`.
+
+Super-admins can still refresh immediately from:
+
+```text
+/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
+```
+
+If an automatic refresh is already running, the dashboard rejects overlapping manual runs and asks you to try again after it finishes.
+
+## Docker
+
+Build and run locally:
 
 ```powershell
-python api_weather.py
+docker compose up --build
 ```
 
-Use `bridge_weather_from_july.py` only when there is an older missing gap that the rolling 7-day history can no longer cover.
+Open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The compose file mounts:
+
+- `./data` to `/app/data`
+- `./results` to `/app/results`
+- your Windows `Downloads` folder to `/input/demand`
+
+Stop:
+
+```powershell
+docker compose down
+```
+
+## Render Deployment
+
+Render should run this as a Docker Web Service, not a Static Site.
+
+The included `render.yaml` config uses:
+
+- root `Dockerfile`
+- service branch `main`
+- free web service plan
+- public port `10000`
+- `requirements-render.txt` for a smaller dashboard runtime install
+- bundled latest `data/` and `artifacts/` snapshot for dashboard display
+- automatic in-service prediction refresh disabled
+
+Deploy steps:
+
+1. Push the deployment repository to GitHub.
+2. In Render, choose **New +** then **Blueprint**.
+3. Connect the GitHub repository.
+4. Select the `render.yaml` file.
+5. Set secret values for:
+   - `DASHBOARD_ADMIN_TOKEN`
+   - `DASHBOARD_SUPER_ADMIN_TOKEN`
+   - `DATABASE_URL`
+6. Create the service and wait for the first deploy.
+7. Open the Render URL.
+
+Public page:
+
+```text
+https://<your-service>.onrender.com/
+```
+
+Admin page:
+
+```text
+https://<your-service>.onrender.com/admin?token=<DASHBOARD_ADMIN_TOKEN>
+```
+
+Super-admin page:
+
+```text
+https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
+```
+
+Free Render web services do not support persistent disks, so this deployment stores generated `data/`, `artifacts/`, and current `results/fast_predictions/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
+
+### Supabase PostgreSQL storage
+
+The four canonical pipeline datasets are published to PostgreSQL whenever
+`DATABASE_URL` is configured. The existing CSV files are still written after a
+successful database publication, so training and dashboard code can continue
+to use the same paths.
+
+This deployment uses Supabase as a PostgreSQL host. It connects directly with
+the database connection string; it does not use the Supabase Data API, Auth,
+or JavaScript client. Therefore, `SUPABASE_URL`, publishable/anon keys, and
+secret/service-role keys are not required.
+
+Create a free Supabase project, then open **Connect** and select **Session
+pooler**. Use the session-pooler connection string on port `5432`, which works
+over IPv4 from Render, GitHub Actions, and most local networks. Replace
+`[YOUR-PASSWORD]` with the database password selected when the project was
+created. Percent-encode reserved password characters such as `@`, `#`, `?`,
+and spaces before placing the password in a URL.
+
+The connection should have this general form:
+
+```text
+DATABASE_URL=postgresql://postgres.<project-ref>:<encoded-password>@<pooler-host>:5432/postgres?sslmode=require
+DATABASE_SCHEMA=weather_pipeline
+PGSSLMODE=require
+```
+
+Hosted `postgresql://` and legacy `postgres://` connection strings are
+automatically configured to use the included Psycopg 3 driver.
+
+The generated tables are `hourly_load`, `weather_hourly`,
+`master_training_data`, `forecast_feature_data`, and `forecast_predictions`.
+Each update replaces its table in one transaction and adds an entry to
+`pipeline_runs`. When `DATABASE_URL` is absent, the pipeline remains CSV-only.
+
+The dashboard reads master data, forecast inputs, and current predictions from
+PostgreSQL when configured, with CSV fallback if a dashboard read fails. The
+fast prediction job reads its training and feature inputs from PostgreSQL and
+publishes all generated horizons to `forecast_predictions`; its existing CSV
+outputs remain unchanged.
+
+To backfill PostgreSQL from the current CSV snapshots without downloading new
+source data:
+
+```powershell
+python uk_training_data_prep\publish_existing_csvs.py
+```
+
+Run the prediction task once to create `forecast_predictions`, then verify
+connectivity and row counts:
+
+```powershell
+python -m models.prophet.fast_gap_fill_and_forecast
+python uk_training_data_prep\check_database.py
+```
+
+#### Supabase and deployment secrets
+
+Set these values in the Render web service under **Environment**:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **Session pooler** URL with the database password |
+| `DASHBOARD_ADMIN_TOKEN` | A random token generated locally |
+| `DASHBOARD_SUPER_ADMIN_TOKEN` | A different random token generated locally |
+
+`DATABASE_SCHEMA=weather_pipeline` and `PGSSLMODE=require` are already set by
+`render.yaml`. Because `DATABASE_URL` has `sync: false`, add it manually when
+updating an existing Render Blueprint, then choose **Save and deploy**.
+
+Generate the two dashboard tokens locally; these do not come from Supabase:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+In GitHub, open **Settings > Secrets and variables > Actions** and create one
+repository secret:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | The same Supabase **Session pooler** URL |
+
+The workflow already sets `PGSSLMODE=require`. Keep the connection string and
+dashboard tokens out of source control. A Supabase publishable key or secret
+API key is only needed if the application is later changed to use Supabase's
+REST API, Auth, Realtime, or Storage.
+
+For the initial local backfill in PowerShell:
+
+```powershell
+$env:DATABASE_URL = "<Supabase Session pooler URL>"
+$env:DATABASE_SCHEMA = "weather_pipeline"
+$env:PGSSLMODE = "require"
+
+python uk_training_data_prep\publish_existing_csvs.py
+python -m models.prophet.fast_gap_fill_and_forecast
+python uk_training_data_prep\check_database.py
+```
+
+### Weather gap audit and repair
+
+The update pipeline audits hourly weather continuity before rebuilding the
+combined weather and master datasets. It checks the aggregate CSVs and saved
+city extracts first. Missing hours that are not available locally are fetched
+from the Open-Meteo historical archive in batched requests, and all configured
+UK cities must contain every requested variable before a repair is published.
+
+Audit without changing files or using the network:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py --check-only
+```
+
+Audit and repair missing hours:
+
+```powershell
+python weather_pipeline\repair_weather_gaps.py
+python uk_training_data_prep\build_weather_feature_data.py
+python uk_training_data_prep\build_master_training_data.py
+```
+
+City-level repair evidence is stored in
+`data/weather_runtime/weather_gap_repair_city_data.csv`, and the latest audit
+is stored in `artifacts/pipeline_status/weather_gap_repair.json`. Dataset
+builders stop with an error if hourly gaps or null weather values remain.
+
+The master-data builder preserves the demand and weather measurements from the
+source CSVs. Any outlier treatment needed by a model must be fitted only on its
+training split; the canonical datasets are not percentile-clipped.
+
+## NESO Lag Handling
+
+NESO demand data can lag behind real time. The latest-prediction task treats the NESO download step as non-blocking: if fresh demand is not available, it continues with the latest cached demand, refreshes weather/features, fills the missing demand interval as a nowcast bridge, and then produces the 24/48/72/168 hour forecasts.
+
+The public forecast page shows `Latest Actual Demand` and `Demand Data Lag` so users can see when part of the forecast depends on that nowcast bridge.

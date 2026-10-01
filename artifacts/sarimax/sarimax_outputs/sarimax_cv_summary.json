@@ -1,0 +1,35 @@
+{
+  "model": "SARIMAX",
+  "order": [
+    2,
+    1,
+    1
+  ],
+  "seasonal_order": [
+    1,
+    0,
+    1,
+    24
+  ],
+  "exog_cols": [
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "precipitation",
+    "is_holiday",
+    "week_sin",
+    "week_cos",
+    "econ_industrial_production_index_lag1m",
+    "econ_gdp_index_lag1m"
+  ],
+  "forecast_horizon_hours": 24,
+  "train_window_hours": 8760,
+  "mean_mae": 1583.3532732342978,
+  "mean_rmse": 2088.5712797185242,
+  "mean_mape": 6.106632532299654,
+  "mean_r2": 0.7506061373840284,
+  "std_rmse": 326.8761870410536,
+  "worst_fold_rmse": 2480.9318446307357,
+  "min_fold_r2": 0.5995814930035689,
+  "final_test_start": "2026-06-01 00:00:00"
+}

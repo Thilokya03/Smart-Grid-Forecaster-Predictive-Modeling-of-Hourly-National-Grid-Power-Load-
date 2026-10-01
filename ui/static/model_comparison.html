@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model Comparison - UK Smart Grid Forecaster</title>
+  <link rel="stylesheet" href="/static/styles.css?v=2026-10-01-ui-v18-explainability">
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <h1>UK Smart Grid Forecaster</h1>
+      <nav>
+        <a href="/">Public Forecast</a>
+        <a href="#leaderboard">Leaderboard</a>
+        <a href="#prophetTuned">Prophet Tuned</a>
+        <a href="#xgboostResults">XGBoost</a>
+        <a href="#sarimaxResults">SARIMAX</a>
+        <a href="#dnnResults">DNN/LSTM</a>
+        <a href="#explainability">Explainability</a>
+        <a href="#notebookEvidence">Notebook Evidence</a>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <h2>Model Comparison</h2>
+        <p>Prophet tuned, XGBoost, SARIMAX, DNN/LSTM, and explainability comparison from saved artifacts and notebook outputs. Version: 2026-10-01-ui-v18-explainability.</p>
+      </header>
+
+      <section id="leaderboard">
+        <h3>CV Leaderboard</h3>
+        <p id="comparisonMessage"></p>
+        <div id="comparisonKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Model RMSE / MAE</h4><div id="leaderboardChart"></div></div>
+          <div class="chart-card"><h4>Prophet vs XGBoost Fold RMSE</h4><div id="foldComparisonChart"></div></div>
+        </div>
+        <h4>Model CV Leaderboard</h4>
+        <div class="table-wrap"><table id="leaderboardTable"></table></div>
+        <h4>Prophet vs XGBoost Fold-by-Fold</h4>
+        <div class="table-wrap"><table id="foldComparisonTable"></table></div>
+      </section>
+
+      <section id="prophetTuned">
+        <h3>Prophet Tuned</h3>
+        <p id="prophetMessage"></p>
+        <div id="prophetKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Prophet Config RMSE</h4><div id="prophetTuningChart"></div></div>
+          <div class="chart-card"><h4>Best Prophet Fold Metrics</h4><div id="prophetFoldChart"></div></div>
+        </div>
+        <h4>Prophet Tuned Configurations</h4>
+        <div class="table-wrap"><table id="prophetTuningTable"></table></div>
+        <h4>Best Prophet Parameters</h4>
+        <div class="table-wrap"><table id="prophetParamTable"></table></div>
+        <h4>Prophet Regressors</h4>
+        <div class="table-wrap"><table id="prophetRegressorTable"></table></div>
+      </section>
+
+      <section id="xgboostResults">
+        <h3>XGBoost</h3>
+        <p id="xgboostMessage"></p>
+        <div id="xgboostKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>XGBoost Config RMSE</h4><div id="xgboostTuningChart"></div></div>
+          <div class="chart-card"><h4>Best XGBoost Fold Metrics</h4><div id="xgboostFoldChart"></div></div>
+        </div>
+        <h4>XGBoost Tuned Configurations</h4>
+        <div class="table-wrap"><table id="xgboostTuningTable"></table></div>
+        <h4>Best XGBoost Parameters</h4>
+        <div class="table-wrap"><table id="xgboostParamTable"></table></div>
+      </section>
+
+      <section id="sarimaxResults">
+        <h3>SARIMAX</h3>
+        <p id="sarimaxMessage"></p>
+        <div id="sarimaxKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>SARIMAX Fold Metrics</h4><div id="sarimaxFoldChart"></div></div>
+        </div>
+        <h4>SARIMAX Fold Table</h4>
+        <div class="table-wrap"><table id="sarimaxFoldTable"></table></div>
+        <h4>SARIMAX Exogenous Features</h4>
+        <div class="table-wrap"><table id="sarimaxFeatureTable"></table></div>
+      </section>
+
+      <section id="dnnResults">
+        <h3>DNN/LSTM</h3>
+        <p id="dnnMessage"></p>
+        <div id="dnnKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>DNN Training History</h4><div id="dnnLossChart"></div></div>
+          <div class="chart-card"><h4>DNN Holdout RMSE / MAE</h4><div id="dnnHoldoutChart"></div></div>
+        </div>
+        <h4>DNN Holdout Results</h4>
+        <div class="table-wrap"><table id="dnnTestTable"></table></div>
+        <h4>DNN Split Ranges</h4>
+        <div class="table-wrap"><table id="dnnSplitTable"></table></div>
+        <h4>DNN Configuration</h4>
+        <div class="table-wrap"><table id="dnnConfigTable"></table></div>
+        <h4>DNN Artifacts</h4>
+        <div class="table-wrap"><table id="dnnArtifactTable"></table></div>
+      </section>
+
+      <section id="explainability">
+        <h3>Explainable AI</h3>
+        <p>Interpret each model with its appropriate method. Signed MW effects show average sensitivity; relative shares are normalized within a model and should not be read as causal effects.</p>
+        <div id="xaiComparisonKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Model-specific top drivers</h4><div id="xaiComparisonDrivers"></div></div>
+          <div class="chart-card"><h4>XGBoost TreeSHAP across forecast hours</h4><div id="xaiComparisonTrend"></div></div>
+        </div>
+        <h4>Ensemble weights</h4>
+        <div class="table-wrap"><table id="xaiEnsembleTable"></table></div>
+        <h4>Explanation coverage</h4>
+        <div class="table-wrap"><table id="xaiCoverageTable"></table></div>
+        <h3>Explainability</h3>
+        <p>Which inputs each model relies on most, read from its own CV artifacts. Not a causal effect
+          estimate &mdash; see the per-model caveat below each chart.</p>
+        <div class="toolbar">
+          <label for="explainModelSelect">Model</label>
+          <select id="explainModelSelect">
+            <option value="tft">TFT (variable-selection gating)</option>
+            <option value="timesfm">TimesFM (covariate regression)</option>
+          </select>
+          <label for="explainArmSelect" id="explainArmLabel">Weather arm</label>
+          <select id="explainArmSelect">
+            <option value="calendar_only">Calendar + past weather (operational)</option>
+            <option value="with_weather">True future weather (upper bound)</option>
+          </select>
+        </div>
+        <p id="explainMessage"></p>
+        <div id="explainKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Top Inputs by Importance</h4><div id="explainChart"></div></div>
+        </div>
+        <h4>Per-Fold Breakdown</h4>
+        <div class="table-wrap"><table id="explainFoldTable"></table></div>
+      </section>
+
+      <section id="notebookEvidence">
+        <h3>Notebook Evidence</h3>
+        <h4>Notebook Comparison</h4>
+        <div class="table-wrap"><table id="notebookRunTable"></table></div>
+        <h4>Notebook Sources</h4>
+        <div class="table-wrap"><table id="notebookSourceTable"></table></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/model_comparison.js?v=2026-10-01-ui-v18-explainability"></script>
+</body>
+</html>

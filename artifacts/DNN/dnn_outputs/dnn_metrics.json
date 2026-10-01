@@ -1,0 +1,66 @@
+{
+  "model": "DNN/LSTM",
+  "evaluation": "4-fold expanding-window time-series cross-validation",
+  "folds": [
+    "aug_2025",
+    "nov_2025",
+    "feb_2026",
+    "may_2026"
+  ],
+  "mae": 1288.0366051232168,
+  "rmse": 1686.7151722319907,
+  "mape": 5.097268627176987,
+  "r2": 0.8350770642492013,
+  "input_length": 168,
+  "forecast_horizon": 24,
+  "hidden_size": 64,
+  "dense_size": 32,
+  "dropout": 0.2,
+  "batch_size": 64,
+  "epochs": 100,
+  "patience": 20,
+  "learning_rate": 0.001,
+  "seed": 42,
+  "fold_results": [
+    {
+      "mae": 1161.2279733912678,
+      "rmse": 1546.4954587061059,
+      "mape": 5.54504656485629,
+      "r2": 0.7628929707922767,
+      "fold": "aug_2025",
+      "validation_start": "2025-08-01 00:00:00",
+      "validation_end": "2025-08-31 23:00:00",
+      "samples": 721
+    },
+    {
+      "mae": 1396.6378837596396,
+      "rmse": 1736.9729974840996,
+      "mape": 4.7039763322408215,
+      "r2": 0.9149940189989725,
+      "fold": "nov_2025",
+      "validation_start": "2025-11-01 00:00:00",
+      "validation_end": "2025-11-30 23:00:00",
+      "samples": 697
+    },
+    {
+      "mae": 1390.5117136088775,
+      "rmse": 1885.033007508247,
+      "mape": 4.582847896320774,
+      "r2": 0.8898565694246579,
+      "fold": "feb_2026",
+      "validation_start": "2026-02-01 00:00:00",
+      "validation_end": "2026-02-28 23:00:00",
+      "samples": 649
+    },
+    {
+      "mae": 1203.7688497330819,
+      "rmse": 1578.35922522951,
+      "mape": 5.557203715290067,
+      "r2": 0.7725646977808979,
+      "fold": "may_2026",
+      "validation_start": "2026-05-01 00:00:00",
+      "validation_end": "2026-05-31 23:00:00",
+      "samples": 721
+    }
+  ]
+}

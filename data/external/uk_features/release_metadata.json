@@ -1,0 +1,18 @@
+{
+    "repository": "Thilokya03/UK-Calendar-Holiday-Events-Dataset",
+    "release_tag": "v1.0.0",
+    "release_name": "UK Dataset v1.0.0",
+    "published_at": "2026-08-13T21:34:16Z",
+    "checked_at": "2026-08-19T06:14:24.513891+00:00",
+    "filtered_start_date": "2010-01-01",
+    "datasets": {
+        "full_calendar_features.csv": {
+            "sha256": "701eb31547bbee75ebc99a33365a753e341aaf66767a9d330fd37014fe71ae12",
+            "filtered_copy": "full_calendar_features_2010_onwards.csv"
+        },
+        "uk_economic_features_daily.csv": {
+            "sha256": "501231b692aae539eef46db0a6619fba985dce42a6122d80add28c44b97aacd4",
+            "filtered_copy": "uk_economic_features_daily_2010_onwards.csv"
+        }
+    }
+}

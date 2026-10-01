@@ -1,0 +1,28 @@
+{
+  "order": [
+    2,
+    1,
+    1
+  ],
+  "seasonal_order": [
+    1,
+    0,
+    1,
+    24
+  ],
+  "aic": -10150.757694006275,
+  "exog_cols": [
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "precipitation",
+    "is_holiday",
+    "week_sin",
+    "week_cos",
+    "econ_industrial_production_index_lag1m",
+    "econ_gdp_index_lag1m"
+  ],
+  "log_transform": true,
+  "order_search_end": "2025-07-31 23:00:00",
+  "order_search_seconds": 621.0288779735565
+}

@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: uk-weather-forecast-dashboard
+    runtime: docker
+    plan: free
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "10000"
+      - key: STORAGE_DIR
+        value: /app/storage
+      - key: USE_PERSISTENT_STORAGE
+        value: "false"
+      - key: DEMAND_INPUT_FOLDER
+        value: /input/demand
+      - key: AUTO_PREDICTIONS_ENABLED
+        value: "false"
+      - key: AUTO_PREDICTION_INTERVAL_HOURS
+        value: "6"
+      - key: AUTO_PREDICTION_RUN_ON_START
+        value: "false"
+      - key: DATABASE_URL
+        # Supabase Connect -> Session pooler (port 5432). Set in Render.
+        sync: false
+      - key: DATABASE_SCHEMA
+        value: weather_pipeline
+      - key: PGSSLMODE
+        value: require
+      - key: DASHBOARD_ADMIN_TOKEN
+        sync: false
+      - key: DASHBOARD_SUPER_ADMIN_TOKEN
+        sync: false
