@@ -8,7 +8,7 @@ import pandas as pd
 import requests
 from requests import RequestException
 
-from uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
+from weather_pipeline.uk_weather_config import HOURLY_VARIABLES, TIMEZONE, UK_AVERAGE_CITY, UK_CITIES
 
 
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
@@ -276,7 +276,7 @@ def update_bridge_from_rolling_history() -> None:
         return
 
     try:
-        import maintain_weather_bridge_csv
+        from weather_pipeline import maintain_weather_bridge_csv
 
         maintain_weather_bridge_csv.main()
     except Exception as exc:

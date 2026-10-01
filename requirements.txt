@@ -3,3 +3,8 @@ requests
 tqdm
 prophet
 torch==2.13.0
+s e l e n i u m  
+ w e b d r i v e r - m a n a g e r  
+fastapi
+httpx
+ 
