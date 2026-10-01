@@ -1,28 +1,28 @@
 {
   "status": "ok",
-  "checked_at": "2026-10-01T11:12:51.134723+00:00",
+  "checked_at": "2026-10-01T17:22:54.506728+00:00",
   "checked_start": "2010-01-01 00:00:00",
-  "checked_end": "2026-10-01 12:00:00",
-  "initial_missing_hours": 97,
+  "checked_end": "2026-10-01 18:00:00",
+  "initial_missing_hours": 103,
   "initial_missing_ranges": [
     {
       "start": "2026-09-20 11:00:00",
-      "end": "2026-09-24 11:00:00",
-      "hours": 97
+      "end": "2026-09-24 17:00:00",
+      "hours": 103
     }
   ],
   "recovered_from_local_city_csvs": 0,
-  "fetched_from_open_meteo": 97,
+  "fetched_from_open_meteo": 103,
   "remaining_missing_hours": 0,
   "remaining_missing_ranges": [],
   "last_repair": {
-    "repaired_at": "2026-10-01T11:12:51.134723+00:00",
-    "hours": 97,
+    "repaired_at": "2026-10-01T17:22:54.506728+00:00",
+    "hours": 103,
     "ranges": [
       {
         "start": "2026-09-20 11:00:00",
-        "end": "2026-09-24 11:00:00",
-        "hours": 97
+        "end": "2026-09-24 17:00:00",
+        "hours": 103
       }
     ],
     "source": "Open-Meteo archive"
