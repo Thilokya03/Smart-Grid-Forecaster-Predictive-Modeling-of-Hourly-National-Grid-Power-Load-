@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-10-01T09:57:38+00:00",
+  "model": "XGBoost fast recursive",
+  "fast_estimators": 120,
+  "horizons": [
+    24,
+    48,
+    72,
+    168
+  ],
+  "train_start": "2010-01-01 00:00:00",
+  "train_end": "2026-06-30 23:00:00",
+  "latest_actual_demand": "2026-10-01 07:00:00",
+  "demand_data_lag_hours": 3,
+  "nowcast_gap_start": "2026-10-01 08:00:00",
+  "nowcast_gap_end": "2026-10-01 10:00:00",
+  "backfill_start": "2026-07-01 00:00:00",
+  "backfill_end": "2026-10-01 10:00:00",
+  "backfill_rows": 2219,
+  "backfill_skipped_rows": 0,
+  "forecast_start": "2026-10-01 11:00:00",
+  "forecast_end": "2026-10-08 10:00:00",
+  "forecast_rows": 168,
+  "forecast_skipped_rows": 0,
+  "detailed_24h": {
+    "component_rmse": {
+      "fast_xgboost": 1386.8998379178015,
+      "lag_24h": 2393.456974953209,
+      "lag_168h": 2358.9821921438884
+    },
+    "base_weights": {
+      "fast_xgboost": 0.4613870578999566,
+      "lag_24h": 0.26735288852699385,
+      "lag_168h": 0.27126005357304955
+    },
+    "scoring_start": "2026-07-01 00:00:00",
+    "scoring_end": "2026-10-01 07:00:00",
+    "scoring_rows": 2216
+  },
+  "elapsed_seconds": 22.57,
+  "outputs": {
+    "backfill": "results\\fast_predictions\\gap_fill_predictions.csv",
+    "legacy_backfill": "results\\fast_predictions\\july_to_sept10_predictions.csv",
+    "current_forecast": "results\\fast_predictions\\current_forecast.csv",
+    "detailed_24h_forecast": "results\\fast_predictions\\detailed_weighted_24h_forecast.csv",
+    "fast_horizon_forecasts": {
+      "24": "results\\fast_predictions\\fast_forecast_24h.csv",
+      "48": "results\\fast_predictions\\fast_forecast_48h.csv",
+      "72": "results\\fast_predictions\\fast_forecast_72h.csv",
+      "168": "results\\fast_predictions\\fast_forecast_168h.csv"
+    },
+    "summary": "results\\fast_predictions\\fast_prediction_summary.json"
+  }
+}

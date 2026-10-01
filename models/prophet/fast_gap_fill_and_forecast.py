@@ -46,7 +46,11 @@ WEATHER_PATH = PROJECT_ROOT / "data" / "weather_hourly.csv"
 FORECAST_FEATURE_PATH = PROJECT_ROOT / "data" / "processed" / "forecast_feature_data.csv"
 HOLIDAYS_PATH = PROJECT_ROOT / "data" / "external" / "uk_features" / "full_calendar_features_2010_onwards.csv"
 ECONOMIC_PATH = PROJECT_ROOT / "data" / "external" / "uk_features" / "uk_economic_features_daily_2010_onwards.csv"
-CONFIG_PATH = PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json"
+_CONFIG_CANDIDATES = (
+    PROJECT_ROOT / "results" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json",
+    PROJECT_ROOT / "artifacts" / "xgboost" / "xgboost_outputs" / "best_xgb_config.json",
+)
+CONFIG_PATH = next((path for path in _CONFIG_CANDIDATES if path.exists()), _CONFIG_CANDIDATES[0])
 OUTPUT_DIR = PROJECT_ROOT / "results" / "fast_predictions"
 TARGET_COLUMN = "demand_mw"
 DEFAULT_HORIZONS = [24, 48, 72, 168]
