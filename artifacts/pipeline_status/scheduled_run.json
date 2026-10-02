@@ -1,85 +1,85 @@
 {
-  "id": "229df7accb694375acedc90bee8b4f9b",
+  "id": "bee9a84e400b4d3d8296a4362c9817f3",
   "task": "refresh_latest_predictions",
   "label": "Refresh Latest Predictions Now",
-  "started_at": "2026-10-02T16:38:28+00:00",
-  "finished_at": "2026-10-02T16:38:46+00:00",
+  "started_at": "2026-10-02T21:19:40+00:00",
+  "finished_at": "2026-10-02T21:19:56+00:00",
   "status": "failed",
   "steps": [
     {
       "script": "uk_training_data_prep/download_latest_neso_demand.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:28+00:00",
+      "started_at": "2026-10-02T21:19:40+00:00",
       "optional": true,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:32+00:00"
+      "finished_at": "2026-10-02T21:19:44+00:00"
     },
     {
       "script": "weather_pipeline/api_weather.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:32+00:00",
+      "started_at": "2026-10-02T21:19:44+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:33+00:00"
+      "finished_at": "2026-10-02T21:19:45+00:00"
     },
     {
       "script": "weather_pipeline/repair_weather_gaps.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:33+00:00",
+      "started_at": "2026-10-02T21:19:45+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:37+00:00"
+      "finished_at": "2026-10-02T21:19:48+00:00"
     },
     {
       "script": "uk_training_data_prep/refresh_local_uk_features.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:37+00:00",
+      "started_at": "2026-10-02T21:19:48+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:37+00:00"
+      "finished_at": "2026-10-02T21:19:48+00:00"
     },
     {
       "script": "uk_training_data_prep/build_weather_feature_data.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:37+00:00",
+      "started_at": "2026-10-02T21:19:49+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:39+00:00"
+      "finished_at": "2026-10-02T21:19:50+00:00"
     },
     {
       "script": "uk_training_data_prep/build_hourly_load_data.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:39+00:00",
+      "started_at": "2026-10-02T21:19:50+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:40+00:00"
+      "finished_at": "2026-10-02T21:19:51+00:00"
     },
     {
       "script": "uk_training_data_prep/build_master_training_data.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:40+00:00",
+      "started_at": "2026-10-02T21:19:51+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:43+00:00"
+      "finished_at": "2026-10-02T21:19:53+00:00"
     },
     {
       "script": "uk_training_data_prep/build_forecast_feature_data.py",
       "status": "ok",
-      "started_at": "2026-10-02T16:38:43+00:00",
+      "started_at": "2026-10-02T21:19:53+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-02T16:38:43+00:00"
+      "finished_at": "2026-10-02T21:19:53+00:00"
     },
     {
       "script": "models/prophet/fast_gap_fill_and_forecast.py",
       "status": "failed",
-      "started_at": "2026-10-02T16:38:43+00:00",
+      "started_at": "2026-10-02T21:19:53+00:00",
       "optional": false,
       "exit_code": 1,
-      "finished_at": "2026-10-02T16:38:46+00:00"
+      "finished_at": "2026-10-02T21:19:56+00:00"
     }
   ],
   "message": "Pipeline stopped before all requested steps completed. The public forecast may still be old.",
   "origin": "github_actions",
-  "run_url": "https://github.com/Thilokya03/Smart-Grid-Forecaster-Predictive-Modeling-of-Hourly-National-Grid-Power-Load-/actions/runs/37035222444"
+  "run_url": "https://github.com/Thilokya03/Smart-Grid-Forecaster-Predictive-Modeling-of-Hourly-National-Grid-Power-Load-/actions/runs/37066100418"
 }
