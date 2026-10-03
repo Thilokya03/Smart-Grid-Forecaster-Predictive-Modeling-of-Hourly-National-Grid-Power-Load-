@@ -1,19 +1,19 @@
 {
   "source": "weather",
   "status": "ok",
-  "checked_at": "2026-10-02T21:19:45+00:00",
-  "last_success_at": "2026-10-02T21:19:45+00:00",
+  "checked_at": "2026-10-03T01:56:58+00:00",
+  "last_success_at": "2026-10-03T01:56:58+00:00",
   "message": "Weather fetch succeeded.",
-  "forecast_start": "2026-10-02 23:00:00",
-  "forecast_end": "2026-10-09 22:00:00",
-  "history_end": "2026-10-02 22:00:00",
+  "forecast_start": "2026-10-03 03:00:00",
+  "forecast_end": "2026-10-10 02:00:00",
+  "history_end": "2026-10-03 02:00:00",
   "forecast_rows": 168,
   "bridge": {
     "ok": true,
     "missing_hours": 0
   },
   "gap_repair": {
-    "checked_at": "2026-10-02T21:19:48.583634+00:00",
+    "checked_at": "2026-10-03T01:57:02.592025+00:00",
     "status": "ok",
     "remaining_missing_hours": 0
   }
