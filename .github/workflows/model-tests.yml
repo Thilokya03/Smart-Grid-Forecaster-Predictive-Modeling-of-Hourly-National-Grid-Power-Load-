@@ -10,13 +10,6 @@ on:
       - "Notebooks/timesfm_forecasting.ipynb"
       - "requirements*.txt"
   pull_request:
-    paths:
-      - ".github/workflows/model-tests.yml"
-      - "models/**"
-      - "scripts/**"
-      - "tests/**"
-      - "Notebooks/timesfm_forecasting.ipynb"
-      - "requirements*.txt"
   workflow_dispatch:
 
 permissions:

@@ -17,7 +17,9 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
+  pull-requests: write
 
 concurrency:
   group: update-forecast-data
@@ -55,24 +57,54 @@ jobs:
         continue-on-error: true
         run: python -m ui.pipeline_runner
 
-      - name: Commit changed data and artifacts
+      - name: Create forecast-update PR and merge after tests pass
         id: publish
+        if: steps.pipeline.outcome == 'success'
         env:
-          PIPELINE_OUTCOME: ${{ steps.pipeline.outcome }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ "$PIPELINE_OUTCOME" = "success" ]; then
-            git add -A -- data artifacts results/fast_predictions
-          else
-            # Publish diagnostics without replacing the last forecast with a partial run.
-            git add -A -- artifacts/pipeline_status
-          fi
+          git add -A -- data artifacts results/fast_predictions
           if git diff --cached --quiet; then
             echo "No data or artifact changes to commit."
           else
+            update_branch="automation/forecast-update-${GITHUB_RUN_ID}"
+            git switch -c "$update_branch"
             git commit -m "Update forecast data [skip ci]"
-            git push
+            git push --set-upstream origin "$update_branch"
+            pr_url="$(gh pr create \
+              --base main \
+              --head "$update_branch" \
+              --title "Update forecast data" \
+              --body "Automated forecast-data refresh from run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}.")"
+            pr_number="$(gh pr view "$update_branch" --json number --jq .number)"
+            echo "Created $pr_url"
+            echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+
+            # A workflow dispatch is used because pushes made with GITHUB_TOKEN
+            # do not start other push workflows. The dispatched test run is
+            # attached to this PR branch and satisfies its required check.
+            gh workflow run model-tests.yml --ref "$update_branch"
+            for attempt in {1..30}; do
+              test_run_id="$(gh run list \
+                --workflow model-tests.yml \
+                --branch "$update_branch" \
+                --event workflow_dispatch \
+                --limit 1 \
+                --json databaseId \
+                --jq '.[0].databaseId')"
+              if [ -n "$test_run_id" ]; then
+                break
+              fi
+              sleep 10
+            done
+            if [ -z "${test_run_id:-}" ]; then
+              echo "::error::The Model tests workflow did not start for PR #$pr_number."
+              exit 1
+            fi
+            gh run watch "$test_run_id" --exit-status
+            gh pr merge "$pr_number" --squash --delete-branch
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -87,8 +119,17 @@ jobs:
             echo "::notice::No deploy hook configured. Render Auto-Deploy must be set to On Commit."
           fi
 
+      - name: Upload failed-refresh diagnostics
+        if: steps.pipeline.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: forecast-refresh-diagnostics-${{ github.run_id }}
+          path: artifacts/pipeline_status
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Mark incomplete refresh as failed
         if: steps.pipeline.outcome == 'failure'
         run: |
-          echo "::error::The refresh failed. Source and step diagnostics were retained for the super-admin dashboard."
+          echo "::error::The refresh failed. Diagnostics were uploaded as a workflow artifact."
           exit 1
