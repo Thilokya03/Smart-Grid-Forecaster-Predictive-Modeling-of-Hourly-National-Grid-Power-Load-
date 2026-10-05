@@ -98,6 +98,32 @@ def metrics(actual: pd.Series, predicted: np.ndarray) -> dict:
     }
 
 
+def tree_contributions(
+    model: xgb.XGBRegressor,
+    frame: pd.DataFrame,
+    features: list[str],
+    timestamps: pd.Series,
+    model_name: str,
+    scope: str,
+) -> pd.DataFrame:
+    """Export native TreeSHAP effects for every scored timestamp and feature."""
+    contribution_matrix = model.get_booster().predict(
+        xgb.DMatrix(frame[features], feature_names=features), pred_contribs=True
+    )
+    rows = []
+    for index, feature in enumerate(features):
+        values = contribution_matrix[:, index]
+        rows.extend({
+            "model": model_name, "fold": scope, "arm": "",
+            "timestamp": pd.Timestamp(timestamp), "feature": feature,
+            "contribution_mw": float(value),
+            "mean_abs_contribution_mw": abs(float(value)),
+            "method": "XGBoost TreeSHAP (native pred_contribs)",
+            "scope": scope,
+        } for timestamp, value in zip(timestamps, values))
+    return pd.DataFrame(rows)
+
+
 def run_final_june(config: dict, data: pd.DataFrame) -> dict:
     features = config["features"]
     train = data[data["timestamp"] < FINAL_TEST_START].dropna(subset=[TARGET_COLUMN, *features]).copy()
@@ -112,6 +138,9 @@ def run_final_june(config: dict, data: pd.DataFrame) -> dict:
     model.fit(train[features], train[TARGET_COLUMN])
     predicted = model.predict(test[features])
     result_metrics = metrics(test[TARGET_COLUMN], predicted)
+    tree_contributions(
+        model, test, features, test["timestamp"], "XGBoost", "June 2026 holdout"
+    ).to_csv(OUTPUT_DIR / "xgb_june_explanations.csv", index=False)
 
     predictions = test[["timestamp", TARGET_COLUMN]].copy()
     predictions["predicted_demand_mw"] = predicted
@@ -162,6 +191,10 @@ def run_future_forecast(config: dict, data: pd.DataFrame) -> dict:
     model = xgb_model(config["params"])
     model.fit(train[features], train[TARGET_COLUMN])
     predictions = model.predict(forecast_features[features])
+    tree_contributions(
+        model, forecast_features, features, forecast_features["timestamp"],
+        "XGBoost", "public forecast",
+    ).to_csv(OUTPUT_DIR / "xgb_public_forecast_explanations.csv", index=False)
 
     output = forecast_features[["timestamp"]].copy()
     output["predicted_demand_mw"] = predictions

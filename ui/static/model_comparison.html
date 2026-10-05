@@ -103,6 +103,17 @@
       </section>
 
       <section id="explainability">
+        <h3>Explainable AI</h3>
+        <p>Interpret each model with its appropriate method. Signed MW effects show average sensitivity; relative shares are normalized within a model and should not be read as causal effects.</p>
+        <div id="xaiComparisonKpis" class="grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card"><h4>Model-specific top drivers</h4><div id="xaiComparisonDrivers"></div></div>
+          <div class="chart-card"><h4>XGBoost TreeSHAP across forecast hours</h4><div id="xaiComparisonTrend"></div></div>
+        </div>
+        <h4>Ensemble weights</h4>
+        <div class="table-wrap"><table id="xaiEnsembleTable"></table></div>
+        <h4>Explanation coverage</h4>
+        <div class="table-wrap"><table id="xaiCoverageTable"></table></div>
         <h3>Explainability</h3>
         <p>Which inputs each model relies on most, read from its own CV artifacts. Not a causal effect
           estimate &mdash; see the per-model caveat below each chart.</p>

@@ -10,6 +10,7 @@ from prophet.serialize import model_to_json
 
 
 from models.cross_validation import FINAL_TEST_START
+from models.explainability import prophet_component_attributions
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -215,6 +216,10 @@ def train_and_evaluate(params: dict, train: pd.DataFrame, validation: pd.DataFra
     model.fit(train[[DATE_COLUMN, TARGET_COLUMN, *regressors]])
 
     forecast = model.predict(validation[[DATE_COLUMN, *regressors]])
+    xai_rows = prophet_component_attributions(
+        model, forecast, validation[DATE_COLUMN].reset_index(drop=True), regressors,
+        "Prophet v2", "recent_validation",
+    )
     predictions = validation[[DATE_COLUMN, TARGET_COLUMN]].merge(
         forecast[[DATE_COLUMN, "yhat", "yhat_lower", "yhat_upper"]],
         on=DATE_COLUMN,
@@ -224,6 +229,7 @@ def train_and_evaluate(params: dict, train: pd.DataFrame, validation: pd.DataFra
         "params": params,
         "model": model,
         "predictions": predictions,
+        "xai_rows": xai_rows,
         "metrics": calculate_metrics(predictions[TARGET_COLUMN], predictions["yhat"]),
     }
 
@@ -235,6 +241,9 @@ def save_result(result: dict, train_rows: int, validation_rows: int, regressors:
         model_file.write(model_to_json(result["model"]))
 
     result["predictions"].to_csv(OUTPUT_FOLDER / "validation_predictions.csv", index=False)
+    pd.DataFrame(result["xai_rows"]).to_csv(
+        OUTPUT_FOLDER / "prophet_v2_explanations.csv", index=False
+    )
 
     summary = {
         "selected_model": result["params"]["name"],
