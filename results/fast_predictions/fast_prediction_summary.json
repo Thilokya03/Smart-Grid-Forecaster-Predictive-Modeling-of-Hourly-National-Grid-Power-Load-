@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-05T04:28:49+00:00",
+  "generated_at": "2026-10-05T05:00:01+00:00",
   "model": "XGBoost fast recursive",
   "fast_estimators": 120,
   "horizons": [
@@ -10,9 +10,9 @@
   ],
   "train_start": "2010-01-01 00:00:00",
   "train_end": "2026-06-30 23:00:00",
-  "latest_actual_demand": "2026-10-05 02:00:00",
-  "demand_data_lag_hours": 3,
-  "nowcast_gap_start": "2026-10-05 03:00:00",
+  "latest_actual_demand": "2026-10-05 03:00:00",
+  "demand_data_lag_hours": 2,
+  "nowcast_gap_start": "2026-10-05 04:00:00",
   "nowcast_gap_end": "2026-10-05 05:00:00",
   "backfill_start": "2026-07-01 00:00:00",
   "backfill_end": "2026-10-05 05:00:00",
@@ -24,20 +24,20 @@
   "forecast_skipped_rows": 0,
   "detailed_24h": {
     "component_rmse": {
-      "fast_xgboost": 1804.9157529385932,
-      "lag_24h": 2264.7596308271713,
-      "lag_168h": 3019.779550834439
+      "fast_xgboost": 1804.5542831966081,
+      "lag_24h": 2264.316228961295,
+      "lag_168h": 3019.8592241054653
     },
     "base_weights": {
-      "fast_xgboost": 0.41759673718239476,
-      "lag_24h": 0.3328065897399336,
-      "lag_168h": 0.24959667307767175
+      "fast_xgboost": 0.41762098585948465,
+      "lag_24h": 0.3328244214065583,
+      "lag_168h": 0.2495545927339571
     },
     "scoring_start": "2026-07-01 00:00:00",
-    "scoring_end": "2026-10-05 02:00:00",
-    "scoring_rows": 2307
+    "scoring_end": "2026-10-05 03:00:00",
+    "scoring_rows": 2308
   },
-  "elapsed_seconds": 49.724,
+  "elapsed_seconds": 25.284,
   "outputs": {
     "backfill": "results/fast_predictions/gap_fill_predictions.csv",
     "legacy_backfill": "results/fast_predictions/july_to_sept10_predictions.csv",

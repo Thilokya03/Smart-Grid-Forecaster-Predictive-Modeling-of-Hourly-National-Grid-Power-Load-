@@ -2306,6 +2306,6 @@ timestamp,predicted_demand_mw,actual_demand_mw,source,missing_features
 2026-10-05 00:00:00,24103.8203125,12738.0,actual_period_prediction,
 2026-10-05 01:00:00,24305.037109375,17586.5,actual_period_prediction,
 2026-10-05 02:00:00,23848.21875,22435.0,actual_period_prediction,
-2026-10-05 03:00:00,22721.927734375,,recursive_forecast_prediction,
+2026-10-05 03:00:00,22721.927734375,22225.5,actual_period_prediction,
 2026-10-05 04:00:00,22375.51171875,,recursive_forecast_prediction,
 2026-10-05 05:00:00,22262.392578125,,recursive_forecast_prediction,
