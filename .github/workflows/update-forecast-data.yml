@@ -35,6 +35,8 @@ jobs:
       DEMAND_INPUT_FOLDER: data/raw/neso
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PGSSLMODE: require
+      PIPELINE_STEP_RETRY_ATTEMPTS: "3"
+      PIPELINE_STEP_RETRY_DELAY_SECONDS: "10"
 
     steps:
       - name: Check out repository
