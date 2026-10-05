@@ -1,85 +1,85 @@
 {
-  "id": "701273bba4b341599b2d094af05da7d1",
+  "id": "4afdf622be58499f91248787ba5482bc",
   "task": "refresh_latest_predictions",
   "label": "Refresh Latest Predictions Now",
-  "started_at": "2026-10-05T02:00:24+00:00",
-  "finished_at": "2026-10-05T02:00:41+00:00",
-  "status": "failed",
+  "started_at": "2026-10-05T04:27:43+00:00",
+  "finished_at": "2026-10-05T04:28:49+00:00",
+  "status": "ok",
   "steps": [
     {
       "script": "uk_training_data_prep/download_latest_neso_demand.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:24+00:00",
+      "started_at": "2026-10-05T04:27:43+00:00",
       "optional": true,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:29+00:00"
+      "finished_at": "2026-10-05T04:27:47+00:00"
     },
     {
       "script": "weather_pipeline/api_weather.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:29+00:00",
+      "started_at": "2026-10-05T04:27:47+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:30+00:00"
+      "finished_at": "2026-10-05T04:27:48+00:00"
     },
     {
       "script": "weather_pipeline/repair_weather_gaps.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:30+00:00",
+      "started_at": "2026-10-05T04:27:48+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:33+00:00"
+      "finished_at": "2026-10-05T04:27:52+00:00"
     },
     {
       "script": "uk_training_data_prep/refresh_local_uk_features.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:33+00:00",
+      "started_at": "2026-10-05T04:27:52+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:34+00:00"
+      "finished_at": "2026-10-05T04:27:52+00:00"
     },
     {
       "script": "uk_training_data_prep/build_weather_feature_data.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:34+00:00",
+      "started_at": "2026-10-05T04:27:52+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:35+00:00"
+      "finished_at": "2026-10-05T04:27:54+00:00"
     },
     {
       "script": "uk_training_data_prep/build_hourly_load_data.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:35+00:00",
+      "started_at": "2026-10-05T04:27:54+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:36+00:00"
+      "finished_at": "2026-10-05T04:27:55+00:00"
     },
     {
       "script": "uk_training_data_prep/build_master_training_data.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:36+00:00",
+      "started_at": "2026-10-05T04:27:55+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:38+00:00"
+      "finished_at": "2026-10-05T04:27:58+00:00"
     },
     {
       "script": "uk_training_data_prep/build_forecast_feature_data.py",
       "status": "ok",
-      "started_at": "2026-10-05T02:00:38+00:00",
+      "started_at": "2026-10-05T04:27:58+00:00",
       "optional": false,
       "exit_code": 0,
-      "finished_at": "2026-10-05T02:00:38+00:00"
+      "finished_at": "2026-10-05T04:27:58+00:00"
     },
     {
       "script": "models/prophet/fast_gap_fill_and_forecast.py",
-      "status": "failed",
-      "started_at": "2026-10-05T02:00:38+00:00",
+      "status": "ok",
+      "started_at": "2026-10-05T04:27:58+00:00",
       "optional": false,
-      "exit_code": 1,
-      "finished_at": "2026-10-05T02:00:41+00:00"
+      "exit_code": 0,
+      "finished_at": "2026-10-05T04:28:49+00:00"
     }
   ],
-  "message": "Pipeline stopped before all requested steps completed. The public forecast may still be old.",
+  "message": "All requested steps completed.",
   "origin": "github_actions",
-  "run_url": "https://github.com/Thilokya03/Smart-Grid-Forecaster-Predictive-Modeling-of-Hourly-National-Grid-Power-Load-/actions/runs/37253595215"
+  "run_url": "https://github.com/Thilokya03/Smart-Grid-Forecaster-Predictive-Modeling-of-Hourly-National-Grid-Power-Load-/actions/runs/37263567410"
 }

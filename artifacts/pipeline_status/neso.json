@@ -1,9 +1,9 @@
 {
   "source": "neso",
   "status": "ok",
-  "checked_at": "2026-10-05T02:00:28+00:00",
-  "last_success_at": "2026-10-05T02:00:28+00:00",
+  "checked_at": "2026-10-05T04:27:47+00:00",
+  "last_success_at": "2026-10-05T04:27:47+00:00",
   "message": "Demand download succeeded using Elexon BMRS fallback; source readings may still lag behind real time.",
-  "latest_complete_hour": "2026-10-05 00:00:00",
-  "rows": 12630
+  "latest_complete_hour": "2026-10-05 02:00:00",
+  "rows": 12632
 }
