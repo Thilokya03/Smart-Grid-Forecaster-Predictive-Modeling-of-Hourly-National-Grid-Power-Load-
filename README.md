@@ -107,6 +107,25 @@ Super-admins can still refresh immediately from:
 
 If an automatic refresh is already running, the dashboard rejects overlapping manual runs and asks you to try again after it finishes.
 
+## Protected Branch and CI Flow
+
+Use `dev` for normal development and keep `main` as the deployable branch:
+
+1. Create a short-lived branch from `dev`, then open a pull request back to
+   `dev`. The `dev` ruleset requires review and the `test` status check.
+2. When a release is ready, open a pull request from `dev` to `main`.
+   `main` requires the `test` check and does not accept direct pushes.
+3. The scheduled **Update forecast data** workflow starts only from `main`.
+   When forecast files change, it creates an `automation/forecast-update-*`
+   branch, opens a pull request to `main`, waits for **Model tests** to pass,
+   and merges that pull request. Render then deploys the updated `main` commit.
+
+Before enabling the scheduled updater, open **Settings > Actions > General**
+and set **Workflow permissions** to **Read and write permissions**. Also enable
+**Allow GitHub Actions to create and approve pull requests**. Keep the `main`
+ruleset's required status-check context as `test`; that is the job name emitted
+by `.github/workflows/model-tests.yml`.
+
 ## Docker
 
 Build and run locally:
@@ -178,7 +197,7 @@ Super-admin page:
 https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
 ```
 
-Free Render web services do not support persistent disks, so this deployment stores generated `data/`, `artifacts/`, and current `results/fast_predictions/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
+Free Render web services do not support persistent disks, so this deployment stores generated `data/`, `artifacts/`, and current `results/fast_predictions/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, proposes changed forecast/data files in an automated pull request, verifies tests, merges it into `main`, and Render redeploys from that updated branch.
 
 ### Supabase PostgreSQL storage
 
