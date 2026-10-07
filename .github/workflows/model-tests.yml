@@ -44,22 +44,41 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install test dependencies
+      - name: Free runner disk space
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install \
+          df -h
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          sudo apt-get clean
+          python -m pip cache purge || true
+          df -h
+
+      - name: Upgrade pip
+        run: python -m pip install --no-cache-dir --upgrade pip
+
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --no-cache-dir "torch==2.9.0" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install core test dependencies
+        run: |
+          python -m pip install --no-cache-dir \
             matplotlib \
             numpy \
             pandas \
             requests \
             "pytest>=9.0" \
             scikit-learn \
-            "torch>=2.0" \
-            "timesfm[torch]==2.0.2" \
-            xgboost
+            "SQLAlchemy==2.0.43" \
+            "xgboost-cpu==3.2.0"
+
+      - name: Install TimesFM
+        run: python -m pip install --no-cache-dir "timesfm==2.0.2"
 
       - name: Check installed dependencies
-        run: python -m pip check
+        run: |
+          python -m pip check
+          python -c "import torch, xgboost; assert torch.version.cuda is None; assert xgboost.__version__ == '3.2.0'"
 
       - name: Compile Python sources
         run: python -m compileall -q models scripts tests

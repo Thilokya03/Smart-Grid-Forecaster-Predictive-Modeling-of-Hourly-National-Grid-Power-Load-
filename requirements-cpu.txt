@@ -1,14 +1,12 @@
 # CPU-only variant of requirements.txt.
 #
-# The default requirements.txt pulls the CUDA build of torch (torch==2.13.0
-# resolves to a "+cuNNN" wheel that bundles the CUDA runtime and uses an
-# NVIDIA GPU when one is present). Everything else in this project (jax/
-# jaxlib for TimesFM's xreg explainability, xgboost) already installs as a
-# CPU-capable wheel by default, so torch is the only package that needs a
-# different source here.
+# The default requirements.txt can pull CUDA libraries. This file pins CPU
+# PyTorch, CPU XGBoost, and CPU JAX directly. TimesFM's torch and xreg extras
+# are omitted because their backends are already listed below; the xreg extra
+# requests jax[cuda] even when CPU JAX is already installed.
 #
 # Install with:
-#   pip install -r requirements-cpu.txt
+#   pip install --no-cache-dir -r requirements-cpu.txt
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 anyio==4.15.1
@@ -86,7 +84,8 @@ statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
 timesfm==2.0.2
-torch==2.9.0
+torch==2.9.0+cpu; platform_system != "Darwin"
+torch==2.9.0; platform_system == "Darwin"
 tornado==6.5.8
 tqdm==4.69.0
 traitlets==5.16.1
@@ -95,16 +94,13 @@ tzdata==2026.3
 urllib3==2.7.0
 wcwidth==0.8.2
 wheel==0.47.0
-timesfm[torch]==2.0.2
-
 # TimesFM covariate explainability (models/timesfm/timesfm_explain.py).
-# jax/jaxlib install as CPU-only wheels by default (no CUDA index needed),
-# so no change from requirements.txt here.
+# Install the CPU JAX backend explicitly; TimesFM itself is listed above.
 # Optional: tests skip without it.
 jax==0.10.2
 jaxlib==0.10.2
-timesfm[xreg]==2.0.2
-xgboost
+xgboost-cpu==3.2.0; platform_system != "Darwin"
+xgboost==3.2.0; platform_system == "Darwin"
 
 # Temporal Fusion Transformer (models/tft). Optional: tests skip without it.
 pytorch-forecasting==1.8.0
