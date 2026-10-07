@@ -10,7 +10,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from ui import auth
-from ui.pipeline_dashboard import DashboardHandler
+from ui.pipeline_dashboard import DashboardHandler, required_role_for_page
 
 
 def test_accounts_sessions_and_revocation(tmp_path, monkeypatch):
@@ -156,7 +156,13 @@ def test_http_login_roles_and_account_management(tmp_path, monkeypatch):
         admin_response = request("/api/auth/login", {"email": "admin@example.com", "password": "a secure admin password"}, gate_cookie)
         admin_cookie = admin_response.headers["Set-Cookie"].split(";", 1)[0]
         assert request("/api/admin/users", cookie=admin_cookie).status == 403
-        assert request("/api/auth/logout", {}, cookie).status == 200
+        logout = request("/api/auth/logout", {}, cookie)
+        assert logout.status == 200
+        assert all("dashboard_gate" not in value for value in logout.headers.get_all("Set-Cookie"))
+        assert b"Welcome back" in request("/login", cookie=gate_cookie).read()
+        assert b"Create a new admin" in request("/super-admin/create-admin", cookie=cookie).read()
+        assert required_role_for_page("/super-admin/create-admin") == "super_admin"
+        assert request("/static/admin_accounts.html", cookie=cookie).status == 404
         assert request("/api/admin/users").status == 403
         assert request("/api/pipeline-health", cookie=admin_cookie).status == 403
         assert request(f"/api/admin/users/{admin_id}/access", {"active": False}, cookie).status == 200

@@ -11,18 +11,13 @@ fetch("/api/auth/gate").then(response => response.json()).then(result => {
   document.getElementById("bootstrapDivider").hidden = !result.bootstrap_available;
 });
 
-document.getElementById("changeToken").addEventListener("click", async () => {
-  await fetch("/api/auth/logout", {method: "POST"});
-  location.reload();
-});
-
 async function signIn(path, body) {
   message.textContent = "Signing in…";
   try {
     const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Sign in failed.");
-    const allowed = result.role === "super_admin" ? ["/admin", "/model-comparison", "/super-admin"] : ["/admin", "/model-comparison"];
+    const allowed = result.role === "super_admin" ? ["/admin", "/model-comparison", "/super-admin", "/super-admin/create-admin"] : ["/admin", "/model-comparison"];
     location.assign(allowed.includes(next) ? next : result.next);
   } catch (error) {
     message.textContent = error.message;

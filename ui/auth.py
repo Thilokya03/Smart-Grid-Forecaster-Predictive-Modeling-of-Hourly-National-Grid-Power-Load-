@@ -21,6 +21,7 @@ from uk_training_data_prep.database import normalize_database_url
 ROLES = {"admin", "super_admin"}
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 SESSION_SECONDS = 8 * 60 * 60
+GATE_SECONDS = 365 * 24 * 60 * 60
 _engine = None
 _engine_url = None
 

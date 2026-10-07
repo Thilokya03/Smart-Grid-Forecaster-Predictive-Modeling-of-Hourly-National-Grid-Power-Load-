@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create a new admin | UK Smart Grid</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <h1>UK Smart Grid Forecaster</h1>
+      <nav>
+        <a href="/">Public Forecast</a>
+        <a href="/super-admin">Super admin dashboard</a>
+        <a href="/admin">Admin Models</a>
+        <a href="/super-admin/create-admin" aria-current="page">Create a new admin</a>
+        <button type="button" class="logout-button" data-logout>Log out</button>
+      </nav>
+    </aside>
+    <main>
+      <header><h2>Create a new admin</h2><p>Create admin and super admin accounts, and manage admin access.</p></header>
+      <section id="accessManagement">
+        <h3>Create an account</h3>
+        <p class="section-note">Create an admin or another super admin. Accounts can sign in with their verified Google email, or with a password you set here.</p>
+        <form id="createAccountForm" class="account-form">
+          <label>Email <input name="email" type="email" required autocomplete="off"></label>
+          <label>Role <select name="role"><option value="admin">Admin</option><option value="super_admin">Super admin</option></select></label>
+          <label>Password <input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="Optional for Google only"></label>
+          <button type="submit">Create account</button>
+        </form>
+        <p id="accountMessage" role="status"></p>
+        <div class="table-wrap"><table id="accountTable"></table></div>
+      </section>
+
+    </main>
+  </div>
+  <script src="/static/admin_access.js?v=2026-10-07"></script>
+</body>
+</html>

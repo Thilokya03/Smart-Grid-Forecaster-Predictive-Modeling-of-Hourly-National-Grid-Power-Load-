@@ -1,6 +1,6 @@
 document.querySelectorAll("[data-logout]").forEach(button => button.addEventListener("click", async () => {
-  await fetch("/api/auth/logout", {method: "POST"});
-  location.assign("/login");
+  const response = await fetch("/api/auth/logout", {method: "POST"});
+  if (response.ok) location.assign("/");
 }));
 
 const accountForm = document.getElementById("createAccountForm");

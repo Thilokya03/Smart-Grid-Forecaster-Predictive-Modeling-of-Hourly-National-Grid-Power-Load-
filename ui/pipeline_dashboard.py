@@ -1802,7 +1802,7 @@ def required_role_for_page(path: str) -> str:
         return "public"
     if path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
         return "admin"
-    if path in {"/super-admin", "/super-admin/"}:
+    if path in {"/super-admin", "/super-admin/", "/super-admin/create-admin", "/super-admin/create-admin/"}:
         return "super_admin"
     return "public"
 
@@ -1874,6 +1874,8 @@ def read_static_file(path: str) -> tuple[bytes, str]:
         file_path = STATIC_DIR / "public.html"
     elif path in {"/login", "/login/"}:
         file_path = STATIC_DIR / "login.html"
+    elif path in {"/super-admin/create-admin", "/super-admin/create-admin/"}:
+        file_path = STATIC_DIR / "admin_accounts.html"
     elif path == "/token-gate":
         file_path = STATIC_DIR / "token_gate.html"
     elif path in {"/super-admin", "/super-admin/"}:
@@ -1881,7 +1883,7 @@ def read_static_file(path: str) -> tuple[bytes, str]:
     elif path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
         file_path = STATIC_DIR / "model_comparison.html"
     elif path.startswith("/static/"):
-        if path.removeprefix("/static/") in {"login.html", "token_gate.html"}:
+        if path.removeprefix("/static/") in {"login.html", "token_gate.html", "admin_accounts.html"}:
             raise FileNotFoundError(path)
         file_path = STATIC_DIR / path.removeprefix("/static/")
     else:
@@ -1890,7 +1892,7 @@ def read_static_file(path: str) -> tuple[bytes, str]:
     resolved = file_path.resolve()
     if STATIC_DIR.resolve() not in resolved.parents and resolved != (STATIC_DIR / "index.html").resolve():
         raise FileNotFoundError(path)
-    if path.startswith("/static/") and resolved.name in {"login.html", "token_gate.html"}:
+    if path.startswith("/static/") and resolved.name in {"login.html", "token_gate.html", "admin_accounts.html"}:
         raise FileNotFoundError(path)
 
     content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
@@ -2181,8 +2183,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         if session or clear:
             self.set_auth_cookie("dashboard_session", session, auth.SESSION_SECONDS)
-        if gate or clear:
-            self.set_auth_cookie("dashboard_gate", gate, 900)
+        if gate:
+            self.set_auth_cookie("dashboard_gate", gate, auth.GATE_SECONDS)
         self.end_headers()
         self.wfile.write(content)
 
@@ -2308,7 +2310,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.auth_json({"error": "Invalid access token."}, 401)
                 return
             self.record_login_attempt(True)
-            self.auth_json({"ok": True, "role": role}, gate=auth.issue_session(service_role=role, ttl=900, purpose="gate"))
+            self.auth_json({"ok": True, "role": role}, gate=auth.issue_session(service_role=role, ttl=auth.GATE_SECONDS, purpose="gate"))
             return
         if parsed.path in {"/api/auth/login", "/api/auth/google"}:
             if self.login_rate_limited():
