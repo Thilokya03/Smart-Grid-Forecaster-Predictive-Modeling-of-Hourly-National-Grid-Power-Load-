@@ -155,7 +155,7 @@ def login_password(email: str, password: str):
     return user if user and user["active"] and check_password(password, user["password_hash"]) else None
 
 
-def login_google(credential: str):
+def login_google(credential: str, bootstrap_role: str | None = None):
     client_id = google_client_id()
     if not client_id:
         raise ValueError("Google sign in is not configured.")
@@ -167,7 +167,10 @@ def login_google(credential: str):
         return None
     if claims.get("email_verified") is not True or not claims.get("sub"):
         return None
-    user = get_user(normalize_email(claims["email"]))
+    email = normalize_email(claims["email"])
+    user = get_user(email)
+    if not user and bootstrap_role == "super_admin" and service_login_allowed("super_admin"):
+        user = create_user(email, "super_admin")
     if not user or not user["active"]:
         return None
     with engine().begin() as connection:

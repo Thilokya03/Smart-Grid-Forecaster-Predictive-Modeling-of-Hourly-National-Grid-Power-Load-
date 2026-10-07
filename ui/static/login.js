@@ -9,6 +9,12 @@ fetch("/api/auth/gate").then(response => response.json()).then(result => {
   if (!result.role) { location.reload(); return; }
   document.getElementById("continueWithToken").hidden = !result.bootstrap_available;
   document.getElementById("bootstrapDivider").hidden = !result.bootstrap_available;
+  if (result.bootstrap_available && result.role === "super_admin") {
+    document.getElementById("loginIntro").textContent = "Create your first super admin account with email and password or with Google.";
+    document.getElementById("emailSubmit").textContent = "Create account with email";
+    document.getElementById("googleDividerText").textContent = "or create with Google";
+    document.getElementById("loginFootnote").textContent = "This first account will receive super admin access.";
+  }
 });
 
 async function signIn(path, body) {

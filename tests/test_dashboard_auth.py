@@ -82,6 +82,33 @@ def test_google_login_requires_verified_existing_account(tmp_path, monkeypatch):
     assert auth.login_google("credential") is None
 
 
+def test_google_can_bootstrap_first_super_admin(tmp_path, monkeypatch):
+    monkeypatch.setenv("DASHBOARD_AUTH_DB_PATH", str(tmp_path / "google-bootstrap.sqlite3"))
+    monkeypatch.delenv("DASHBOARD_AUTH_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("DASHBOARD_SUPER_ADMIN_TOKEN", "test-super-token")
+    auth.init_db()
+    claims = {"email": "owner@example.com", "email_verified": True, "sub": "google-owner-1"}
+    google = types.ModuleType("google")
+    google.__path__ = []
+    google_auth = types.ModuleType("google.auth")
+    google_auth.__path__ = []
+    transport = types.ModuleType("google.auth.transport")
+    transport.requests = types.SimpleNamespace(Request=lambda: object())
+    oauth2 = types.ModuleType("google.oauth2")
+    oauth2.__path__ = []
+    oauth2.id_token = types.SimpleNamespace(verify_oauth2_token=lambda token, request, audience: dict(claims))
+    for name, module in (("google", google), ("google.auth", google_auth), ("google.auth.transport", transport), ("google.oauth2", oauth2)):
+        monkeypatch.setitem(sys.modules, name, module)
+    user = auth.login_google("credential", bootstrap_role="super_admin")
+    assert user["email"] == "owner@example.com"
+    assert user["role"] == "super_admin"
+    assert user["google_sub"] == "google-owner-1"
+    claims["email"] = "other@example.com"
+    assert auth.login_google("credential", bootstrap_role="super_admin") is None
+
+
 def test_session_secret_is_derived_without_session_environment(monkeypatch):
     monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
     monkeypatch.setenv("DASHBOARD_LOGIN_TOKEN", "deployment-token")

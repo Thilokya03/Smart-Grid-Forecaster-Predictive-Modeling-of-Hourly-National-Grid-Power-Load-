@@ -2328,7 +2328,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if not gate:
                         self.send_forbidden("access token")
                         return
-                    user = auth.login_google(str(data.get("credential", "")))
+                    bootstrap_role = "super_admin" if gate["role"] == "super_admin" and auth.service_login_allowed("super_admin") else None
+                    user = auth.login_google(str(data.get("credential", "")), bootstrap_role=bootstrap_role)
                 elif data.get("method") == "token":
                     service_role = auth.login_token(str(data.get("token", "")))
                 elif data.get("method") == "gate":
@@ -2338,6 +2339,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         self.send_forbidden("access token")
                         return
                     user = auth.login_password(str(data.get("email", "")), str(data.get("password", "")))
+                    if not user and gate["role"] == "super_admin" and auth.service_login_allowed("super_admin"):
+                        user = auth.create_user(str(data.get("email", "")), "super_admin", str(data.get("password", "")))
                 if user and gate and not role_allows(gate["role"], user["role"]):
                     user = None
                 if service_role and not auth.service_login_allowed(service_role):

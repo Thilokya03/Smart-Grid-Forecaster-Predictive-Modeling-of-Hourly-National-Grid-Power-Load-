@@ -13,7 +13,7 @@
     <section class="login-card">
       <p class="eyebrow">SECURE ACCESS</p>
       <h1>Welcome back</h1>
-      <p class="intro">Your access token was accepted. Choose how to sign in.</p>
+      <p id="loginIntro" class="intro">Your access token was accepted. Choose how to sign in.</p>
       <button id="continueWithToken" class="primary" type="button" hidden>Continue with access token to set up the first account</button>
       <div id="bootstrapDivider" class="divider" hidden><span>or use your account</span></div>
       <form id="passwordForm">
@@ -21,14 +21,14 @@
         <input id="email" name="email" type="email" autocomplete="username" required placeholder="you@example.com">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Your password">
-        <button class="primary" type="submit">Sign in with email</button>
+        <button id="emailSubmit" class="primary" type="submit">Sign in with email</button>
       </form>
-      <div class="divider"><span>or</span></div>
+      <div class="divider"><span id="googleDividerText">or</span></div>
       <div id="googleButton" aria-label="Sign in with Google"></div>
       <p id="googleUnavailable" class="hint" hidden>Google sign in is not configured yet.</p>
       <p id="loginMessage" role="alert" aria-live="polite"></p>
     </section>
-    <p class="footnote">Access is granted by a super admin. Contact one if you need an account.</p>
+    <p id="loginFootnote" class="footnote">Access is granted by a super admin. Contact one if you need an account.</p>
   </main>
   <script src="/static/login.js"></script>
 </body>
