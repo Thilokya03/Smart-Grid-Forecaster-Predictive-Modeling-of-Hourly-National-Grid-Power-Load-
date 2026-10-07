@@ -46,6 +46,7 @@ async function ready(url) {
     await page.locator('#unlockForm button').click();
     await page.getByRole('heading', {name: 'Welcome back'}).waitFor();
     await page.getByText('Create your first super admin account with email and password or with Google.').waitFor();
+    assert.equal(await page.locator('#continueWithToken').isVisible(), false);
     await page.locator('#email').fill('owner@example.com');
     await page.locator('#password').fill('a secure super password');
     await page.locator('#passwordForm button').click();

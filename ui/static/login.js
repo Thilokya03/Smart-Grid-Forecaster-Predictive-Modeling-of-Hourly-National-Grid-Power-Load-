@@ -7,9 +7,10 @@ document.getElementById("continueWithToken").addEventListener("click", () => {
 
 fetch("/api/auth/gate").then(response => response.json()).then(result => {
   if (!result.role) { location.reload(); return; }
-  document.getElementById("continueWithToken").hidden = !result.bootstrap_available;
-  document.getElementById("bootstrapDivider").hidden = !result.bootstrap_available;
-  if (result.bootstrap_available && result.role === "super_admin") {
+  const firstSuperAdmin = result.bootstrap_available && result.role === "super_admin";
+  document.getElementById("continueWithToken").hidden = !result.bootstrap_available || firstSuperAdmin;
+  document.getElementById("bootstrapDivider").hidden = !result.bootstrap_available || firstSuperAdmin;
+  if (firstSuperAdmin) {
     document.getElementById("loginIntro").textContent = "Create your first super admin account with email and password or with Google.";
     document.getElementById("emailSubmit").textContent = "Create account with email";
     document.getElementById("googleDividerText").textContent = "or create with Google";
