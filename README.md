@@ -74,12 +74,12 @@ CSV downloads, calculated insights, and saved theme preferences.
 - `/forecast/inputs`
 - `/settings`
 
-Keep the previously used admin and super admin tokens configured, and add a session signing secret before starting the dashboard:
+Keep the previously used admin and super admin tokens configured, and set the deployment login token before starting the dashboard:
 
 ```powershell
 $env:DASHBOARD_ADMIN_TOKEN = "your-existing-admin-token"
 $env:DASHBOARD_SUPER_ADMIN_TOKEN = "your-existing-super-admin-token"
-$env:DASHBOARD_SESSION_SECRET = "replace-with-a-random-string-of-at-least-32-characters"
+$env:DASHBOARD_LOGIN_TOKEN = "your-deployment-login-token"
 python -m ui.pipeline_dashboard
 ```
 
@@ -95,7 +95,7 @@ On the super admin page, **Access Management** creates admin accounts and additi
 
 `/login` initially shows only a token prompt. A correct `DASHBOARD_ADMIN_TOKEN` or `DASHBOARD_SUPER_ADMIN_TOKEN` opens the email/password and Google options for 15 minutes. An admin token cannot open a super admin account. The existing tokens remain valid; they do not need to be changed. Shared-token-only sign in is available solely to bootstrap the first account. After accounts exist, a person must also sign in with their own password or verified Google identity, so revoking their account cannot be bypassed with the shared token. Tokens and passwords are posted to the server; neither is placed in URLs. The server issues an eight-hour signed JWT in an HttpOnly cookie. Set `DASHBOARD_SECURE_COOKIES=true` when serving HTTPS without a proxy that supplies `X-Forwarded-Proto: https`.
 
-Accounts are stored in `DATABASE_URL` when configured (recommended for Render). Otherwise, the local `data/dashboard_auth.sqlite3` file is used. Set `DASHBOARD_AUTH_DATABASE_URL` to use a separate account database. Keep the database and `DASHBOARD_SESSION_SECRET` stable across deployments. The account database file is excluded from Git.
+Accounts are stored in `DATABASE_URL` when configured (recommended for Render). Otherwise, the local `data/dashboard_auth.sqlite3` file is used. Set `DASHBOARD_AUTH_DATABASE_URL` to use a separate account database. The session-signing key is derived from the configured deployment login token (or the existing role tokens), so no second secret is required. `DASHBOARD_SESSION_SECRET` remains available as an optional stable override. The account database file is excluded from Git.
 
 ## Automatic Predictions
 
@@ -108,7 +108,8 @@ Use these environment variables:
 ```text
 DASHBOARD_ADMIN_TOKEN=change-me-admin
 DASHBOARD_SUPER_ADMIN_TOKEN=change-me-super
-DASHBOARD_SESSION_SECRET=<random string of at least 32 characters>
+DASHBOARD_LOGIN_TOKEN=<deployment login token>
+DASHBOARD_SESSION_SECRET=<optional random string of at least 32 characters>
 GOOGLE_CLIENT_ID=<Google Web client ID, optional>
 AUTO_PREDICTIONS_ENABLED=true
 AUTO_PREDICTION_INTERVAL_HOURS=6
@@ -171,7 +172,7 @@ Deploy steps:
 2. In Render, choose **New +** then **Blueprint**.
 3. Connect the GitHub repository.
 4. Select the `render.yaml` file.
-5. Keep the existing `DASHBOARD_ADMIN_TOKEN` and `DASHBOARD_SUPER_ADMIN_TOKEN`, and set `DASHBOARD_SESSION_SECRET` and `DATABASE_URL`. Set `GOOGLE_CLIENT_ID` if using Google sign in.
+5. Keep the existing `DASHBOARD_ADMIN_TOKEN` and `DASHBOARD_SUPER_ADMIN_TOKEN`, set `DASHBOARD_LOGIN_TOKEN` and `DATABASE_URL`, and set `GOOGLE_CLIENT_ID` if using Google sign in.
 6. Create the service and wait for the first deploy.
 7. Open the Render URL.
 
@@ -260,14 +261,15 @@ Set these values in the Render web service under **Environment**:
 | `DATABASE_URL` | Supabase **Session pooler** URL with the database password |
 | `DASHBOARD_ADMIN_TOKEN` | Existing admin token required to open admin login options |
 | `DASHBOARD_SUPER_ADMIN_TOKEN` | Existing super admin token required to open super admin login options |
-| `DASHBOARD_SESSION_SECRET` | A random signing secret of at least 32 characters |
+| `DASHBOARD_LOGIN_TOKEN` | Deployment token required before the dashboard login page |
+| `DASHBOARD_SESSION_SECRET` | Optional random signing secret override (not required) |
 | `GOOGLE_CLIENT_ID` | Google Web application client ID, if enabling Google sign in |
 
 `DATABASE_SCHEMA=weather_pipeline` and `PGSSLMODE=require` are already set by
 `render.yaml`. Because `DATABASE_URL` has `sync: false`, add it manually when
 updating an existing Render Blueprint, then choose **Save and deploy**.
 
-Keep the existing dashboard tokens. Generate only the new session secret locally; these do not come from Supabase:
+Keep the existing dashboard tokens and generate a deployment login token locally; these do not come from Supabase:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"

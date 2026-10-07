@@ -113,6 +113,14 @@ def service_login_allowed(role: str) -> bool:
     return count == 0
 
 
+def service_token(role: str) -> str:
+    if role == "super_admin":
+        return os.environ.get("DASHBOARD_LOGIN_TOKEN", "").strip() or os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN", "").strip()
+    if role == "admin":
+        return os.environ.get("DASHBOARD_ADMIN_TOKEN", "").strip()
+    return ""
+
+
 def create_user(email: str, role: str, password: str | None = None) -> dict:
     email = normalize_email(email)
     if role not in ROLES:
@@ -172,10 +180,24 @@ def _decode(value: str) -> bytes:
 
 
 def session_secret() -> bytes:
-    value = os.environ.get("DASHBOARD_SESSION_SECRET", "")
-    if len(value) < 32:
-        raise RuntimeError("Set DASHBOARD_SESSION_SECRET to a random string of at least 32 characters.")
-    return value.encode()
+    override = os.environ.get("DASHBOARD_SESSION_SECRET", "").strip()
+    if override:
+        if len(override) < 32:
+            raise RuntimeError("DASHBOARD_SESSION_SECRET must contain at least 32 characters.")
+        return override.encode()
+
+    configured = [
+        ("login", os.environ.get("DASHBOARD_LOGIN_TOKEN", "").strip()),
+        ("super_admin", os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN", "").strip()),
+        ("admin", os.environ.get("DASHBOARD_ADMIN_TOKEN", "").strip()),
+    ]
+    material = b"\0".join(f"{name}:{value}".encode() for name, value in configured if value)
+    if not material:
+        raise RuntimeError(
+            "Dashboard authentication is not configured. Set DASHBOARD_LOGIN_TOKEN "
+            "(or DASHBOARD_ADMIN_TOKEN/DASHBOARD_SUPER_ADMIN_TOKEN)."
+        )
+    return hashlib.sha256(b"uk-smart-grid-dashboard/session-signing-key/v1\0" + material).digest()
 
 
 def issue_session(user: dict | None = None, service_role: str | None = None, ttl: int = SESSION_SECONDS, purpose: str = "session") -> str:
@@ -188,7 +210,7 @@ def issue_session(user: dict | None = None, service_role: str | None = None, ttl
     elif service_role in ROLES:
         if purpose == "session" and not service_login_allowed(service_role):
             raise ValueError("Sign in with your account after entering the access token.")
-        secret = os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN" if service_role == "super_admin" else "DASHBOARD_ADMIN_TOKEN", "")
+        secret = service_token(service_role)
         if not secret:
             raise ValueError("Token login is not configured.")
         payload.update({"service": service_role, "fingerprint": hashlib.sha256(secret.encode()).hexdigest()})
@@ -218,7 +240,7 @@ def session_identity(token: str, purpose: str = "session"):
             return user if user and user["active"] and user["token_version"] == claims.get("version") else None
         role = claims.get("service")
         if role in ROLES:
-            secret = os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN" if role == "super_admin" else "DASHBOARD_ADMIN_TOKEN", "")
+            secret = service_token(role)
             if secret and (purpose == "gate" or service_login_allowed(role)) and hmac.compare_digest(hashlib.sha256(secret.encode()).hexdigest(), claims.get("fingerprint", "")):
                 return {"id": None, "email": "Token access", "role": role, "active": True}
     except (ValueError, TypeError, KeyError, json.JSONDecodeError):
@@ -229,6 +251,9 @@ def session_identity(token: str, purpose: str = "session"):
 def login_token(value: str):
     if not value:
         return None
+    expected = os.environ.get("DASHBOARD_LOGIN_TOKEN", "")
+    if expected and hmac.compare_digest(value, expected):
+        return "super_admin"
     for role, name in (("super_admin", "DASHBOARD_SUPER_ADMIN_TOKEN"), ("admin", "DASHBOARD_ADMIN_TOKEN")):
         expected = os.environ.get(name, "")
         if expected and hmac.compare_digest(value, expected):

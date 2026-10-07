@@ -36,7 +36,7 @@ services:
         sync: false
       - key: DASHBOARD_SUPER_ADMIN_TOKEN
         sync: false
-      - key: DASHBOARD_SESSION_SECRET
+      - key: DASHBOARD_LOGIN_TOKEN
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

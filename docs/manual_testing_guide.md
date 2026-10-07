@@ -41,7 +41,24 @@ Purpose: confirm the user-facing forecast dashboard works in the browser.
 
 Expected result: public dashboard renders, forecast data is populated, 24h/168h views work, and CSV download works.
 
-## Test 2: Admin Model Comparison Check
+## Test 2: Dashboard Authentication Flow
+
+Purpose: confirm the deployment token gate, account login, session persistence, logout, and restart behavior.
+
+1. Configure `DASHBOARD_LOGIN_TOKEN` (the existing admin and super-admin tokens remain configured as before). Do not configure `DASHBOARD_SESSION_SECRET`.
+2. Start or restart the service and open `/admin` or `/super-admin`.
+3. Confirm the service starts and redirects to the existing **Enter your access token** login page.
+4. Enter the correct deployment token and confirm the account login page appears.
+5. Enter the correct account credentials and confirm the appropriate dashboard opens.
+6. Refresh the page and confirm the authenticated session continues.
+7. Log out and confirm the login page appears again.
+8. Repeat with an incorrect deployment token and confirm access is denied while the login page remains available.
+9. Restart the service and confirm it starts using only `DASHBOARD_LOGIN_TOKEN`.
+10. Remove all dashboard authentication tokens and confirm protected dashboard routes are not publicly accessible; the service must fail with a useful authentication configuration error rather than expose the dashboard.
+
+Expected result: the deployment token is never shown in HTML, JavaScript, URLs, logs, or cookies; valid access reaches the dashboard, invalid access does not, and signed sessions preserve logout and expiry behavior.
+
+## Test 3: Admin Model Comparison Check
 
 Purpose: confirm protected admin model evidence is visible and access-controlled.
 
@@ -75,7 +92,7 @@ PUBLIC_DASHBOARD_URL/admin?token=wrong-token
 
 Expected result: valid admin token works; missing/wrong token is denied.
 
-## Test 3: Super-Admin Health Check
+## Test 4: Super-Admin Health Check
 
 Purpose: confirm operational health evidence is visible and protected.
 
@@ -100,7 +117,7 @@ PUBLIC_DASHBOARD_URL/super-admin?token=PREVIEW_SUPER_TOKEN
 
 Expected result: super-admin token works; lower/no access is denied; 168-hour coverage is present.
 
-## Test 4: Render Restart Recovery
+## Test 5: Render Restart Recovery
 
 Purpose: complete FR-10, the remaining manual failure/recovery test.
 
@@ -125,7 +142,7 @@ Purpose: complete FR-10, the remaining manual failure/recovery test.
 
 Expected result: deployed dashboard, Supabase reads, admin checks, and health checks still pass after restart.
 
-## Test 5: Render Health Warning Review
+## Test 6: Render Health Warning Review
 
 Purpose: explain or fix remaining hosted warnings.
 
@@ -148,7 +165,7 @@ Purpose: explain or fix remaining hosted warnings.
 
 Expected result: all warnings are either resolved or explained in the report.
 
-## Test 6: Cross-Browser Spot Check
+## Test 7: Cross-Browser Spot Check
 
 Purpose: provide manual evidence beyond automated Chrome-based smoke tests.
 

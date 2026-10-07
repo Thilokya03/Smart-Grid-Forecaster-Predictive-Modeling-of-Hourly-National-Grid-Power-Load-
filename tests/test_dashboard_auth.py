@@ -1,6 +1,7 @@
 """Credential, session, and role enforcement checks for the dashboard."""
 
 import json
+import pytest
 import sys
 import threading
 import types
@@ -16,7 +17,8 @@ def test_accounts_sessions_and_revocation(tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_AUTH_DB_PATH", str(tmp_path / "accounts.sqlite3"))
     monkeypatch.delenv("DASHBOARD_AUTH_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "unit-test-signing-secret-is-long-enough")
+    monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
+    monkeypatch.setenv("DASHBOARD_LOGIN_TOKEN", "test-deployment-login-token")
     monkeypatch.setenv("DASHBOARD_SUPER_ADMIN_TOKEN", "test-super-admin-token")
     auth.init_db()
 
@@ -80,11 +82,25 @@ def test_google_login_requires_verified_existing_account(tmp_path, monkeypatch):
     assert auth.login_google("credential") is None
 
 
+def test_session_secret_is_derived_without_session_environment(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
+    monkeypatch.setenv("DASHBOARD_LOGIN_TOKEN", "deployment-token")
+    first = auth.session_secret()
+    assert len(first) == 32
+    assert first == auth.session_secret()
+    monkeypatch.delenv("DASHBOARD_LOGIN_TOKEN")
+    monkeypatch.delenv("DASHBOARD_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("DASHBOARD_SUPER_ADMIN_TOKEN", raising=False)
+    with pytest.raises(RuntimeError, match="authentication is not configured"):
+        auth.session_secret()
+
+
 def test_http_login_roles_and_account_management(tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_AUTH_DB_PATH", str(tmp_path / "http.sqlite3"))
     monkeypatch.delenv("DASHBOARD_AUTH_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "unit-test-signing-secret-is-long-enough")
+    monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
+    monkeypatch.setenv("DASHBOARD_LOGIN_TOKEN", "test-deployment-login-token")
     monkeypatch.setenv("DASHBOARD_ADMIN_TOKEN", "test-admin-token")
     monkeypatch.setenv("DASHBOARD_SUPER_ADMIN_TOKEN", "test-super-token")
     auth.init_db()
@@ -110,6 +126,10 @@ def test_http_login_roles_and_account_management(tmp_path, monkeypatch):
         assert b"Enter your access token" in request("/login").read()
         assert request("/static/login.html").status == 404
         assert request("/api/auth/unlock", {"token": "wrong"}).status == 401
+        login_gate_response = request("/api/auth/unlock", {"token": "test-deployment-login-token"})
+        assert login_gate_response.status == 200
+        login_gate_cookie = login_gate_response.headers["Set-Cookie"].split(";", 1)[0]
+        assert b"Welcome back" in request("/login", cookie=login_gate_cookie).read()
         assert request("/api/auth/login", {"method": "password", "email": "owner@example.com", "password": "a secure super password"}).status == 403
         gate_response = request("/api/auth/unlock", {"token": "test-super-token"})
         gate_cookie = gate_response.headers["Set-Cookie"].split(";", 1)[0]
@@ -136,6 +156,8 @@ def test_http_login_roles_and_account_management(tmp_path, monkeypatch):
         admin_response = request("/api/auth/login", {"email": "admin@example.com", "password": "a secure admin password"}, gate_cookie)
         admin_cookie = admin_response.headers["Set-Cookie"].split(";", 1)[0]
         assert request("/api/admin/users", cookie=admin_cookie).status == 403
+        assert request("/api/auth/logout", {}, cookie).status == 200
+        assert request("/api/admin/users").status == 403
         assert request("/api/pipeline-health", cookie=admin_cookie).status == 403
         assert request(f"/api/admin/users/{admin_id}/access", {"active": False}, cookie).status == 200
         assert request("/api/auth/me", cookie=admin_cookie).read() == b'{"email": null, "role": "public"}'
