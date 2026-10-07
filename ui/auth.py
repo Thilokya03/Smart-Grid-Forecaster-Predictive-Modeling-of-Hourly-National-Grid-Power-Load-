@@ -22,8 +22,14 @@ ROLES = {"admin", "super_admin"}
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 SESSION_SECONDS = 8 * 60 * 60
 GATE_SECONDS = 365 * 24 * 60 * 60
+DEFAULT_GOOGLE_CLIENT_ID = "203979422278-7qd3hktoujiknl7ut7bri12sntoa8j9o.apps.googleusercontent.com"
 _engine = None
 _engine_url = None
+
+
+def google_client_id() -> str:
+    """Public OAuth client ID shared by button configuration and token verification."""
+    return os.environ.get("GOOGLE_CLIENT_ID", "").strip() or DEFAULT_GOOGLE_CLIENT_ID
 
 
 def database_url() -> str:
@@ -126,7 +132,7 @@ def create_user(email: str, role: str, password: str | None = None) -> dict:
     email = normalize_email(email)
     if role not in ROLES:
         raise ValueError("Invalid role.")
-    if not password and not os.environ.get("GOOGLE_CLIENT_ID", "").strip():
+    if not password and not google_client_id():
         raise ValueError("Set a password or configure Google sign in.")
     hashed = hash_password(password) if password else None
     user_id = secrets.token_hex(16)
@@ -150,7 +156,7 @@ def login_password(email: str, password: str):
 
 
 def login_google(credential: str):
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    client_id = google_client_id()
     if not client_id:
         raise ValueError("Google sign in is not configured.")
     from google.auth.transport import requests

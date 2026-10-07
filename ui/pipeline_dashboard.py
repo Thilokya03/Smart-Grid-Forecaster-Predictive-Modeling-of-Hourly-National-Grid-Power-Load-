@@ -2232,7 +2232,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         role = request_role(self.headers)
         if parsed.path == "/api/auth/config":
-            self.send_json({"google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "")})
+            self.send_json({"google_client_id": auth.google_client_id()})
             return
         if parsed.path == "/api/auth/gate":
             gate = gate_identity(self.headers)

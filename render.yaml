@@ -39,4 +39,4 @@ services:
       - key: DASHBOARD_LOGIN_TOKEN
         sync: false
       - key: GOOGLE_CLIENT_ID
-        sync: false
+        value: 203979422278-7qd3hktoujiknl7ut7bri12sntoa8j9o.apps.googleusercontent.com

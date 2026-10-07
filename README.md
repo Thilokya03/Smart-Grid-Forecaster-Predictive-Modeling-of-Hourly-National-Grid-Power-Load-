@@ -91,7 +91,7 @@ python -m ui.auth create-super-admin --email you@example.com
 
 For a hosted service without a command line, enter the configured super admin token at `/login`, choose **Continue with access token to set up the first account**, and create a named super admin in **Access Management**. Keep the token configured: it is required to open the login options on future visits.
 
-On the super admin page, **Access Management** creates admin accounts and additional super admin accounts. Set a password of at least 12 characters, or leave it empty for a Google-only account. Super admins can revoke and restore admin access; revoked sessions stop working immediately. Google sign in is available when `GOOGLE_CLIENT_ID` is set to a Google Web application client ID with this site's origin authorized. Google identities must use the email of an existing active account. The server verifies Google's ID token before signing in.
+On the super admin page, **Create a new admin** creates admin accounts and additional super admin accounts. Set a password of at least 12 characters, or leave it empty for a Google-only account. Super admins can revoke and restore admin access; revoked sessions stop working immediately. Google sign in is available when `GOOGLE_CLIENT_ID` is set to a Google Web application client ID with this site's origin authorized. Google identities must use the email of an existing active account. The server verifies Google's ID token before signing in.
 
 `/login` initially shows only a token prompt. A correct `DASHBOARD_ADMIN_TOKEN` or `DASHBOARD_SUPER_ADMIN_TOKEN` opens the email/password and Google options. This browser remembers token verification for one year, including after logout; clearing cookies or rotating the access token requires verification again. Logout clears the account session and returns to the public forecast. An admin token cannot open a super admin account. The existing tokens remain valid; they do not need to be changed. Shared-token-only sign in is available solely to bootstrap the first account. After accounts exist, a person must also sign in with their own password or verified Google identity, so revoking their account cannot be bypassed with the shared token. Tokens and passwords are posted to the server; neither is placed in URLs. The server issues an eight-hour signed JWT in an HttpOnly cookie. Set `DASHBOARD_SECURE_COOKIES=true` when serving HTTPS without a proxy that supplies `X-Forwarded-Proto: https`.
 
@@ -337,3 +337,9 @@ NESO demand data can lag behind real time. The latest-prediction task treats the
 The public forecast page shows `Latest Actual Demand` and `Demand Data Lag` so users can see when part of the forecast depends on that nowcast bridge.
 
 Super admins can open **Create a new admin** at `/super-admin/create-admin` to create admin or super admin accounts and revoke or restore admin access.
+
+### Google sign-in client
+
+The supplied public Google Web client ID is configured by default in `ui/auth.py` and `render.yaml`. `GOOGLE_CLIENT_ID` can override it; an unset or empty variable uses the default. The login button and server token verification use the same client ID. No client secret is needed for this flow.
+
+In Google Cloud Console, open this OAuth client and add the deployed site's exact origin (scheme and hostname, without a path) under **Authorized JavaScript origins**. Add `http://localhost:8765` separately if using that development origin. See [Google's setup guide](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid). Only existing active admin or super admin accounts can sign in with Google.
