@@ -259,6 +259,7 @@ def session_identity(token: str, purpose: str = "session"):
 
 
 def login_token(value: str):
+    value = value.strip()
     if not value:
         return None
     expected = os.environ.get("DASHBOARD_LOGIN_TOKEN", "")

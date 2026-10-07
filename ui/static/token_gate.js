@@ -7,7 +7,7 @@ form.addEventListener("submit", async event => {
     const response = await fetch("/api/auth/unlock", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({token: new FormData(form).get("token")}),
+      body: JSON.stringify({token: String(new FormData(form).get("token") || "").trim()}),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Access token was not accepted.");

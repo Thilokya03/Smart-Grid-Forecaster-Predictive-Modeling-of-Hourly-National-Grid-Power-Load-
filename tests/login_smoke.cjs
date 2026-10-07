@@ -42,7 +42,7 @@ async function ready(url) {
     await page.locator('#accessToken').fill('wrong');
     await page.locator('#unlockForm button').click();
     await page.getByText('Invalid access token.').waitFor();
-    await page.locator('#accessToken').fill('smoke-super-token');
+    await page.locator('#accessToken').fill('  smoke-super-token  ');
     await page.locator('#unlockForm button').click();
     await page.getByRole('heading', {name: 'Welcome back'}).waitFor();
     await page.getByText('Create your first super admin account with email and password or with Google.').waitFor();

@@ -38,6 +38,7 @@ def test_accounts_sessions_and_revocation(tmp_path, monkeypatch):
     assert auth.login_password("admin@example.com", "a secure admin password")["id"] == admin["id"]
     assert auth.login_token("wrong") is None
     assert auth.login_token("test-super-admin-token") == "super_admin"
+    assert auth.login_token("  test-super-admin-token  ") == "super_admin"
     monkeypatch.delenv("DASHBOARD_SUPER_ADMIN_TOKEN")
     assert auth.session_identity(token_session) is None
     assert auth.session_identity(gate_token, "gate") is None
