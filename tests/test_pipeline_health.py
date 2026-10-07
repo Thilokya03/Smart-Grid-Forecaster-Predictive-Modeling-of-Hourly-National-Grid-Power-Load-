@@ -96,12 +96,31 @@ def test_pipeline_stops_on_required_failure_and_reports_it(tmp_path, monkeypatch
     for name in ("first.py", "second.py"):
         (tmp_path / name).touch()
     monkeypatch.setitem(dashboard.TASKS, "test_health", ("Test", [(Path("first.py"), False), (Path("second.py"), False)]))
-    with patch.object(dashboard.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, "", "failed")) as run:
+    with patch.object(dashboard.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, "", "failed")) as run, patch.object(dashboard.time, "sleep"):
         dashboard.run_task("test_health")
     report = health.read_report("run", tmp_path)
     assert report["status"] == "failed"
-    assert run.call_count == 1
+    assert run.call_count == 2
+    assert report["steps"][0]["attempts"] == 2
+    assert report["steps"][0]["message"] == "failed"
     assert not dashboard.TASK_LOCK.locked()
+
+
+def test_pipeline_retries_required_step_then_succeeds(tmp_path, monkeypatch):
+    monkeypatch.setattr(dashboard, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(dashboard, "write_report", lambda name, value: health.write_report(name, value, tmp_path))
+    monkeypatch.setattr(dashboard, "read_report", lambda name: health.read_report(name, tmp_path))
+    monkeypatch.setenv("PIPELINE_STEP_RETRY_ATTEMPTS", "3")
+    (tmp_path / "first.py").touch()
+    monkeypatch.setitem(dashboard.TASKS, "test_retry", ("Test", [(Path("first.py"), False)]))
+    outcomes = [subprocess.CompletedProcess([], 1, "temporary failure", ""), subprocess.CompletedProcess([], 0, "done", "")]
+    with patch.object(dashboard.subprocess, "run", side_effect=outcomes) as run, patch.object(dashboard.time, "sleep") as sleep:
+        dashboard.run_task("test_retry")
+    report = health.read_report("run", tmp_path)
+    assert report["status"] == "ok"
+    assert report["steps"][0]["attempts"] == 2
+    assert run.call_count == 2
+    sleep.assert_called_once_with(5.0)
 
 
 def test_cached_download_is_degraded_even_with_exit_zero(tmp_path, monkeypatch):

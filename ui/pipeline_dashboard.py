@@ -2397,6 +2397,13 @@ def run_task_unlocked(task_key: str) -> str:
         report["run_url"] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     write_report("run", report)
     lines = []
+    # A forecast refresh relies on external data providers and a remote database.
+    # Retry a failed command once by default; callers such as GitHub Actions can
+    # increase this with PIPELINE_STEP_RETRY_ATTEMPTS.  We deliberately retry
+    # only required steps so an optional source remains a quick degraded run.
+    retry_attempts = max(1, int(os.environ.get("PIPELINE_STEP_RETRY_ATTEMPTS", "2")))
+    retry_delay_seconds = max(0, float(os.environ.get("PIPELINE_STEP_RETRY_DELAY_SECONDS", "5")))
+    diagnostic_output_limit = 8000
     for relative_script, optional in relative_scripts:
         script_path = project_path(relative_script)
         step = {"script": str(relative_script), "status": "running", "started_at": utc_now(), "optional": optional}
@@ -2405,14 +2412,24 @@ def run_task_unlocked(task_key: str) -> str:
         try:
             if not script_path.exists():
                 raise FileNotFoundError(f"Script not found: {relative_script}")
-            completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=int(os.environ.get("PIPELINE_STEP_TIMEOUT_SECONDS", "900")))
+            max_attempts = 1 if optional else retry_attempts
+            completed = None
+            for attempt in range(1, max_attempts + 1):
+                completed = subprocess.run([sys.executable, str(script_path)], cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=int(os.environ.get("PIPELINE_STEP_TIMEOUT_SECONDS", "900")))
+                if completed.returncode == 0 or attempt == max_attempts:
+                    break
+                lines.append(f"Attempt {attempt}/{max_attempts} failed; retrying {relative_script} in {retry_delay_seconds:g}s.")
+                time.sleep(retry_delay_seconds)
             lines.append(f"$ {sys.executable} {relative_script}")
             if completed.stdout.strip():
                 lines.append(completed.stdout.strip())
             if completed.stderr.strip():
                 lines.append(completed.stderr.strip())
             lines.append(f"Exit code: {completed.returncode}")
-            step.update(status="ok" if completed.returncode == 0 else "failed", exit_code=completed.returncode)
+            step.update(status="ok" if completed.returncode == 0 else "failed", exit_code=completed.returncode, attempts=attempt)
+            if completed.returncode != 0:
+                output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+                step["message"] = (output or "The command exited without diagnostic output.")[-diagnostic_output_limit:]
             source_name = {"download_latest_neso_demand.py": "neso", "api_weather.py": "weather"}.get(relative_script.name)
             source = read_report(source_name) if source_name else {}
             if source.get("checked_at", "") >= started and source.get("status") in {"cached", "degraded", "failed"}:

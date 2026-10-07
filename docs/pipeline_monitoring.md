@@ -56,23 +56,32 @@ Europe/London. It also supports **Run workflow** and bootstraps when its workflo
 or monitoring runner changes on `main`. Scheduled Actions can be delayed and are
 not a guarantee of an exact publication time.
 
-After a successful run, the workflow commits changed data, forecasts, and
-monitoring reports. After a failed run it commits only monitoring reports,
-preserving the repository's previous data/forecast snapshot. It respects
-`.gitignore`, including excluded large model files. A failed run remains red in
-Actions even after its diagnostics are committed.
+After a successful run, the workflow creates an
+`automation/forecast-update-*` branch containing changed data, forecasts, and
+monitoring reports. It opens a pull request to `main`, dispatches **Model
+tests**, and merges only after the required `test` check succeeds. A failed
+refresh does not change `main`; it uploads `artifacts/pipeline_status` as a
+diagnostic artifact and records the failed step's output there. Required steps
+are retried three times in Actions to tolerate transient data-provider or
+database failures. The workflow respects `.gitignore`, including excluded large
+model files.
 
 Render must deploy these commits before the public site changes:
 
-1. Push the updated code and workflow to the deployment repository's `main`.
-2. In GitHub **Actions > Update forecast data**, check that it is enabled and
-   run it once. Confirm that the data commit is pushed successfully.
-3. In Render **Settings > Auto-Deploy**, choose **On Commit**. The Blueprint now
+1. Merge code changes through a pull request to the deployment repository's
+   `main` branch; do not push directly to the protected branch.
+2. In GitHub **Settings > Actions > General**, select **Read and write
+   permissions** and enable **Allow GitHub Actions to create and approve pull
+   requests**. In the `main` ruleset, require the `test` status check.
+3. In GitHub **Actions > Update forecast data**, check that it is enabled and
+   run it once. Confirm that it opens and merges an automated update pull
+   request when forecast files change.
+4. In Render **Settings > Auto-Deploy**, choose **On Commit**. The Blueprint now
    explicitly sets `autoDeployTrigger: commit`. **After CI Checks Pass** is not
-   appropriate for data-only bot commits without checks.
-4. Optionally put Render's secret deploy-hook URL in the GitHub Actions secret
+   needed because the update pull request is already tested before it merges.
+5. Optionally put Render's secret deploy-hook URL in the GitHub Actions secret
    `RENDER_DEPLOY_HOOK_URL`. The workflow uses it after publishing a commit.
-5. Confirm Render deployed the new commit, then compare the health page's
+6. Confirm Render deployed the new commit, then compare the health page's
    generation time and bundled Actions report with the workflow.
 
 Manual updates inside Render Free can update the running instance, but do not

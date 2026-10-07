@@ -11,6 +11,7 @@ Use this folder as the hand-in documentation set for the UK Smart Grid Forecaste
 | `data_pipeline.md` | Data sources, generated datasets, pipeline order, and feature engineering summary. |
 | `model_comparison_status.md` | Current model results, artifact availability, fair comparison status, and missing exports. |
 | `api_and_dashboard.md` | Dashboard pages, API endpoints, admin/public separation, and expected artifact paths. |
+| `pipeline_monitoring.md` | Scheduled forecast refresh, protected-branch PR flow, diagnostics, and Render deployment checks. |
 | `final_testing_and_deployment_plan.md` | Exact next steps before June final testing and production forecast serving. |
 | `submission_checklist.md` | Final report/demo checklist for hand-in. |
 
