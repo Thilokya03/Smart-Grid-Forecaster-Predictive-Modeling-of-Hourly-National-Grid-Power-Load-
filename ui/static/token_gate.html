@@ -14,7 +14,8 @@
       <p class="eyebrow">ACCESS CHECK</p>
       <h1>Enter your access token</h1>
       <p class="intro">Use the existing admin or super admin token to open the login page.</p>
-      <form id="unlockForm">
+      <form id="unlockForm" method="post" action="/api/auth/unlock">
+        <input id="unlockNext" name="next" type="hidden" value="">
         <label for="accessToken">Access token</label>
         <input id="accessToken" name="token" type="password" autocomplete="off" required placeholder="Paste access token">
         <button class="primary" type="submit">Open login page</button>

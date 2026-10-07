@@ -1,6 +1,6 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 import ast
 import html
 import json
@@ -2188,6 +2188,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def auth_redirect(self, location: str, gate: str | None = None) -> None:
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        if gate:
+            self.set_auth_cookie("dashboard_gate", gate, auth.GATE_SECONDS)
+        self.end_headers()
+
     def read_json_body(self):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -2297,20 +2305,47 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.auth_json({"ok": True}, clear=True)
             return
         if parsed.path == "/api/auth/unlock":
-            data = self.read_json_body()
+            form_submission = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() == "application/x-www-form-urlencoded"
+            if form_submission:
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 1 or length > 16384:
+                        raise ValueError
+                    fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
+                    data = {key: values[0] for key, values in fields.items()}
+                except (ValueError, UnicodeDecodeError):
+                    data = None
+            else:
+                data = self.read_json_body()
+            next_path = str(data.get("next", "")) if isinstance(data, dict) else ""
+            if next_path not in {"/admin", "/model-comparison", "/super-admin", "/super-admin/create-admin"}:
+                next_path = ""
+
+            def form_error(code: str, message: str, status: int) -> None:
+                if form_submission:
+                    query = urlencode({key: value for key, value in {"next": next_path, "token_error": code}.items() if value})
+                    self.auth_redirect(f"/login?{query}" if query else "/login")
+                else:
+                    self.auth_json({"error": message}, status)
+
             if not isinstance(data, dict):
-                self.auth_json({"error": "Invalid request."}, 400)
+                form_error("request", "Invalid request.", 400)
                 return
             if self.login_rate_limited():
-                self.auth_json({"error": "Too many attempts. Try again in five minutes."}, 429)
+                form_error("rate", "Too many attempts. Try again in five minutes.", 429)
                 return
             role = auth.login_token(str(data.get("token", "")))
             if not role:
                 self.record_login_attempt(False)
-                self.auth_json({"error": "Invalid access token."}, 401)
+                form_error("invalid", "Invalid access token.", 401)
                 return
             self.record_login_attempt(True)
-            self.auth_json({"ok": True, "role": role}, gate=auth.issue_session(service_role=role, ttl=auth.GATE_SECONDS, purpose="gate"))
+            gate = auth.issue_session(service_role=role, ttl=auth.GATE_SECONDS, purpose="gate")
+            if form_submission:
+                destination = "/login" + (f"?{urlencode({'next': next_path})}" if next_path else "")
+                self.auth_redirect(destination, gate=gate)
+            else:
+                self.auth_json({"ok": True, "role": role}, gate=gate)
             return
         if parsed.path in {"/api/auth/login", "/api/auth/google"}:
             if self.login_rate_limited():

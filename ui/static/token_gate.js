@@ -1,18 +1,20 @@
 const form = document.getElementById("unlockForm");
 const message = document.getElementById("unlockMessage");
-form.addEventListener("submit", async event => {
-  event.preventDefault();
+const params = new URLSearchParams(location.search);
+
+document.getElementById("unlockNext").value = params.get("next") || "";
+
+const errors = {
+  invalid: "Invalid access token.",
+  rate: "Too many attempts. Try again in five minutes.",
+  request: "Invalid request.",
+};
+if (errors[params.get("token_error")]) {
+  message.textContent = errors[params.get("token_error")];
+}
+
+form.addEventListener("submit", () => {
+  const input = document.getElementById("accessToken");
+  input.value = input.value.trim();
   message.textContent = "Checking token…";
-  try {
-    const response = await fetch("/api/auth/unlock", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({token: String(new FormData(form).get("token") || "").trim()}),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Access token was not accepted.");
-    location.assign("/login" + location.search);
-  } catch (error) {
-    message.textContent = error.message;
-  }
 });

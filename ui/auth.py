@@ -262,11 +262,11 @@ def login_token(value: str):
     value = value.strip()
     if not value:
         return None
-    expected = os.environ.get("DASHBOARD_LOGIN_TOKEN", "")
+    expected = os.environ.get("DASHBOARD_LOGIN_TOKEN", "").strip()
     if expected and hmac.compare_digest(value, expected):
         return "super_admin"
     for role, name in (("super_admin", "DASHBOARD_SUPER_ADMIN_TOKEN"), ("admin", "DASHBOARD_ADMIN_TOKEN")):
-        expected = os.environ.get(name, "")
+        expected = os.environ.get(name, "").strip()
         if expected and hmac.compare_digest(value, expected):
             return role
     return None
