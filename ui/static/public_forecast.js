@@ -439,8 +439,7 @@ $("downloadForecast").addEventListener("click", () => {
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 document.querySelectorAll("[data-signin]").forEach(button => button.addEventListener("click", () => {
-  const role = button.dataset.signin, token = window.prompt("Enter " + role.replace("-", " ") + " token");
-  if (token) location.href = "/" + role + "?token=" + encodeURIComponent(token);
+  location.href = "/login?next=" + encodeURIComponent("/" + button.dataset.signin);
 }));
 applyThemeSettings(); initSettings(); applyPageMode(); setActiveHorizonButton(); setView(selectedView);
 refreshPage();

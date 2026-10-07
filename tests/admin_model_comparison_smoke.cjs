@@ -16,11 +16,13 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
     const adminPage = base + '/admin';
     const comparisonApi = base + '/api/notebook-visuals';
 
-    assert.equal((await page.request.get(adminPage)).status(), 403);
-    assert.equal((await page.request.get(adminPage + '?token=invalid')).status(), 403);
+    assert.equal((await page.request.get(adminPage, {maxRedirects: 0})).status(), 303);
+    assert.equal((await page.request.get(adminPage + '?token=invalid', {maxRedirects: 0})).status(), 303);
     assert.equal((await page.request.get(comparisonApi)).status(), 403);
-    assert.equal((await page.request.get(comparisonApi + '?token=' + adminToken)).status(), 200);
-    assert.equal((await page.request.get(base + '/api/pipeline-health?token=' + adminToken)).status(), 403);
+    const login = await page.request.post(base + '/api/auth/login', {data: {method: 'token', token: adminToken}});
+    assert.equal(login.status(), 200);
+    assert.equal((await page.request.get(comparisonApi)).status(), 200);
+    assert.equal((await page.request.get(base + '/api/pipeline-health')).status(), 403);
 
     const errors = [];
     const failedResponses = [];
@@ -31,7 +33,7 @@ const output = path.resolve(process.env.PUBLIC_SCREENSHOT_DIR || 'results/public
       }
     });
 
-    await page.goto(adminPage + '?token=' + adminToken);
+    await page.goto(adminPage);
     await page.locator('#comparisonKpis .card').first().waitFor();
     assert.equal(await page.getByRole('heading', {name: 'Model Comparison'}).count(), 1);
     assert.equal(await page.locator('main section').count(), 6);

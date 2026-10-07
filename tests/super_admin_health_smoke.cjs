@@ -11,7 +11,9 @@ const assert = require('node:assert/strict');
     const endpoint = base + '/api/pipeline-health';
     assert.equal((await page.request.get(endpoint)).status(), 403);
     assert.equal((await page.request.get(endpoint + '?token=' + adminToken)).status(), 403);
-    const response = await page.request.get(endpoint + '?token=' + token);
+    const login = await page.request.post(base + '/api/auth/login', {data: {method: 'token', token}});
+    assert.equal(login.status(), 200);
+    const response = await page.request.get(endpoint);
     assert.equal(response.status(), 200);
     const health = await response.json();
     assert.equal(health.coverage['168'].rows, 168);
@@ -22,21 +24,21 @@ const assert = require('node:assert/strict');
       const url = new URL(request.url());
       if (url.pathname.startsWith('/api/')) initialApiPaths.push(url.pathname);
     });
-    await page.goto(base + '/super-admin?token=' + token);
+    await page.goto(base + '/super-admin');
     await page.waitForFunction(() => document.querySelector('#pipelineHealthSummary').textContent.includes('Checked'));
     await page.waitForTimeout(500);
     assert.equal(await page.locator('#loadErrors').count(), 0, 'admin page should not report stale element references');
-    assert.deepEqual([...new Set(initialApiPaths)].sort(), ['/api/last-output', '/api/pipeline-health']);
+    assert.deepEqual([...new Set(initialApiPaths)].sort(), ['/api/admin/users', '/api/last-output', '/api/pipeline-health']);
     assert.ok(await page.locator('#pipelineSteps tbody tr').count() >= 1);
     await page.screenshot({path: 'results/public-dashboard/super-admin-health.png'});
     let running = false;
-    await page.route('**/api/pipeline-health?*', route => route.fulfill({json: {
+    await page.route('**/api/pipeline-health', route => route.fulfill({json: {
       ...health, running,
       alerts: [{severity: 'warning', title: 'Weather cache used', detail: 'A rate limit prevented a fresh fetch.', action: 'Retry the update.'}],
     }}));
     await page.locator('#checkPipelineHealth').click();
     await page.getByText('Weather cache used', {exact: true}).waitFor();
-    await page.route('**/run?*', route => {
+    await page.route('**/run', route => {
       running = true;
       return route.fulfill({json: {accepted: true, message: 'Pipeline started.'}});
     });

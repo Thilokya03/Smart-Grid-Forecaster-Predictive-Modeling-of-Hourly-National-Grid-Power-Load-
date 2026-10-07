@@ -23,6 +23,8 @@
         <a href="#notebookModels">Notebook Logs</a>
         <a href="#pipeline">Pipeline</a>
         <a href="#models">Models</a>
+        <a href="#accessManagement">Access Management</a>
+        <button type="button" class="logout-button" data-logout>Sign out</button>
       </nav>
     </aside>
     <main>
@@ -40,6 +42,19 @@
         <p class="section-note"><a href="https://github.com/Kusal-Nirukshan/UK-Smart-Grid-Deploy-Render/actions/workflows/update-forecast-data.yml" target="_blank" rel="noopener">Open GitHub scheduled updates</a></p>
         <p id="pipelineActionMessage" class="section-note" role="status"></p>
         <div class="table-wrap"><table id="pipelineSteps"></table></div>
+      </section>
+
+      <section id="accessManagement">
+        <h3>Access Management</h3>
+        <p class="section-note">Create an admin or another super admin. Accounts can sign in with their verified Google email, or with a password you set here.</p>
+        <form id="createAccountForm" class="account-form">
+          <label>Email <input name="email" type="email" required autocomplete="off"></label>
+          <label>Role <select name="role"><option value="admin">Admin</option><option value="super_admin">Super admin</option></select></label>
+          <label>Password <input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="Optional for Google only"></label>
+          <button type="submit">Create account</button>
+        </form>
+        <p id="accountMessage" role="status"></p>
+        <div class="table-wrap"><table id="accountTable"></table></div>
       </section>
 
       <section id="overview">
@@ -148,5 +163,6 @@
     </main>
   </div>
   <script src="/static/app.js?v=2026-09-20-ui-v19-super-admin-health"></script>
+  <script src="/static/admin_access.js"></script>
 </body>
 </html>

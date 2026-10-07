@@ -1,0 +1,28 @@
+:root { font-family: Inter, Segoe UI, Arial, sans-serif; color: #17302e; background: #eef4f1; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 78% 8%, #d9ece4 0, transparent 36%), #eef4f1; }
+.login-shell { width: min(100% - 36px, 460px); margin: 0 auto; padding: 32px 0 54px; }
+.home-link { color: #275f53; text-decoration: none; font-size: 14px; font-weight: 650; }
+.brand { display: flex; gap: 12px; align-items: center; margin: 56px 0 28px; font-size: 17px; line-height: 1.2; letter-spacing: -.02em; }
+.brand-icon { width: 46px; height: 46px; border-radius: 14px; background: #176b57; color: white; display: grid; place-items: center; font-size: 28px; }
+.brand strong { color: #176b57; }
+.login-card { background: #fff; border: 1px solid #d8e5de; box-shadow: 0 18px 45px #23473b17; border-radius: 18px; padding: 34px; }
+.eyebrow { color: #17765d; font-size: 11px; letter-spacing: .16em; font-weight: 800; margin: 0 0 9px; }
+h1 { margin: 0; font-size: 30px; letter-spacing: -.04em; }
+.intro { color: #647a72; font-size: 14px; margin: 9px 0 28px; }
+label { display: block; font-size: 13px; font-weight: 700; margin: 17px 0 7px; }
+input { width: 100%; padding: 12px 13px; border-radius: 8px; border: 1px solid #c9d9d0; font: inherit; outline-color: #17765d; }
+button { width: 100%; margin-top: 20px; padding: 12px; border-radius: 8px; border: 1px solid #b5cfc1; background: #eff7f2; color: #174e3f; font: inherit; font-weight: 750; cursor: pointer; }
+button.primary { background: #176b57; border-color: #176b57; color: #fff; }
+button:hover { filter: brightness(.96); }
+.divider { display: flex; align-items: center; gap: 14px; color: #84968d; font-size: 12px; margin: 24px 0; }
+.divider::before, .divider::after { content: ""; height: 1px; background: #dce8e1; flex: 1; }
+#googleButton { display: flex; justify-content: center; min-height: 40px; }
+.token-details { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2eae5; font-size: 13px; }
+summary { color: #176b57; font-weight: 700; cursor: pointer; }
+.hint, .footnote { text-align: center; color: #74857e; font-size: 12px; }
+#loginMessage { color: #a32939; font-size: 13px; min-height: 18px; margin: 16px 0 0; }
+#unlockMessage { color: #a32939; font-size: 13px; min-height: 18px; margin: 16px 0 0; }
+.footnote { margin-top: 25px; }
+@media(max-width: 480px) { .login-card { padding: 26px 22px; } .brand { margin-top: 36px; } }

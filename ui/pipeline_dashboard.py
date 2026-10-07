@@ -7,12 +7,14 @@ import json
 import mimetypes
 import os
 import re
-import secrets
 import subprocess
 import sys
 import threading
 import time
 import uuid
+from http.cookies import SimpleCookie
+
+from ui import auth
 
 import pandas as pd
 from ui.pipeline_health import pipeline_health, read_report, write_report, utc_now
@@ -1742,22 +1744,27 @@ def start_automatic_predictions() -> None:
     thread.start()
 
 
-def token_from_query(query: dict[str, list[str]]) -> str:
-    return query.get("token", [""])[0].strip()
+def request_role(headers) -> str:
+    return request_identity(headers).get("role", "public")
 
 
-def request_role(query: dict[str, list[str]], headers) -> str:
-    token = token_from_query(query) or headers.get("X-Dashboard-Token", "").strip()
-    admin_token = os.environ.get("DASHBOARD_ADMIN_TOKEN", "").strip()
-    super_token = os.environ.get("DASHBOARD_SUPER_ADMIN_TOKEN", "").strip()
+def request_identity(headers) -> dict:
+    return cookie_identity(headers, "dashboard_session") or {"role": "public"}
 
-    if not admin_token and not super_token:
-        return "super_admin"
-    if super_token and secrets.compare_digest(token, super_token):
-        return "super_admin"
-    if admin_token and secrets.compare_digest(token, admin_token):
-        return "admin"
-    return "public"
+
+def gate_identity(headers) -> dict | None:
+    identity = cookie_identity(headers, "dashboard_gate")
+    return identity if identity and identity.get("id") is None and identity.get("role") in {"admin", "super_admin"} else None
+
+
+def cookie_identity(headers, name: str) -> dict | None:
+    cookie = SimpleCookie()
+    try:
+        cookie.load(headers.get("Cookie", ""))
+        session = cookie.get(name)
+        return auth.session_identity(session.value, "gate" if name == "dashboard_gate" else "session") if session else None
+    except Exception:
+        return None
 
 
 def role_allows(role: str, required: str) -> bool:
@@ -1790,6 +1797,8 @@ def required_role_for_page(path: str) -> str:
         "/settings/",
     }
     if path in public_pages or path.startswith("/static/"):
+        return "public"
+    if path in {"/login", "/login/"}:
         return "public"
     if path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
         return "admin"
@@ -1863,17 +1872,25 @@ def read_static_file(path: str) -> tuple[bytes, str]:
     }
     if path in public_pages:
         file_path = STATIC_DIR / "public.html"
+    elif path in {"/login", "/login/"}:
+        file_path = STATIC_DIR / "login.html"
+    elif path == "/token-gate":
+        file_path = STATIC_DIR / "token_gate.html"
     elif path in {"/super-admin", "/super-admin/"}:
         file_path = STATIC_DIR / "index.html"
     elif path in {"/admin", "/admin/", "/model-comparison", "/model-comparison/"}:
         file_path = STATIC_DIR / "model_comparison.html"
     elif path.startswith("/static/"):
+        if path.removeprefix("/static/") in {"login.html", "token_gate.html"}:
+            raise FileNotFoundError(path)
         file_path = STATIC_DIR / path.removeprefix("/static/")
     else:
         raise FileNotFoundError(path)
 
     resolved = file_path.resolve()
     if STATIC_DIR.resolve() not in resolved.parents and resolved != (STATIC_DIR / "index.html").resolve():
+        raise FileNotFoundError(path)
+    if path.startswith("/static/") and resolved.name in {"login.html", "token_gate.html"}:
         raise FileNotFoundError(path)
 
     content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
@@ -2129,6 +2146,60 @@ def html_page(last_output: str = "") -> str:
 
 class DashboardHandler(BaseHTTPRequestHandler):
     last_output = ""
+    login_failures = {}
+    login_lock = threading.Lock()
+
+    def login_rate_limited(self) -> bool:
+        now = time.monotonic()
+        address = self.client_address[0]
+        with self.login_lock:
+            recent = [stamp for stamp in self.login_failures.get(address, []) if now - stamp < 300]
+            self.login_failures[address] = recent
+            return len(recent) >= 10
+
+    def record_login_attempt(self, succeeded: bool) -> None:
+        address = self.client_address[0]
+        with self.login_lock:
+            if succeeded:
+                self.login_failures.pop(address, None)
+            else:
+                self.login_failures.setdefault(address, []).append(time.monotonic())
+
+    def set_auth_cookie(self, name: str, token: str | None, max_age: int) -> None:
+        secure = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() == "https" or os.environ.get("DASHBOARD_SECURE_COOKIES", "").lower() == "true"
+        cookie = f"{name}={token or ''}; Path=/; HttpOnly; SameSite=Lax"
+        if secure:
+            cookie += "; Secure"
+        cookie += f"; Max-Age={max_age if token else 0}"
+        self.send_header("Set-Cookie", cookie)
+
+    def auth_json(self, payload, status_code: int = 200, session: str | None = None, gate: str | None = None, clear: bool = False) -> None:
+        content = json.dumps(payload).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        if session or clear:
+            self.set_auth_cookie("dashboard_session", session, auth.SESSION_SECONDS)
+        if gate or clear:
+            self.set_auth_cookie("dashboard_gate", gate, 900)
+        self.end_headers()
+        self.wfile.write(content)
+
+    def read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 16384:
+                raise ValueError("Invalid request size.")
+            return json.loads(self.rfile.read(length))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return None
+
+    def valid_origin(self) -> bool:
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return True
+        return urlparse(origin).netloc == self.headers.get("Host", "")
 
     def send_json(self, payload, status_code: int = 200) -> None:
         content = json.dumps(payload).encode("utf-8")
@@ -2157,7 +2228,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
-        role = request_role(query, self.headers)
+        role = request_role(self.headers)
+        if parsed.path == "/api/auth/config":
+            self.send_json({"google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "")})
+            return
+        if parsed.path == "/api/auth/gate":
+            gate = gate_identity(self.headers)
+            self.send_json({"role": gate["role"] if gate else None, "bootstrap_available": bool(gate and auth.service_login_allowed(gate["role"]))})
+            return
+        if parsed.path == "/api/auth/me":
+            identity = request_identity(self.headers)
+            self.send_json({"email": identity.get("email"), "role": identity.get("role", "public")})
+            return
+        if parsed.path == "/api/admin/users":
+            if role != "super_admin":
+                self.send_forbidden("super_admin")
+                return
+            self.send_json({"users": auth.list_users()})
+            return
         if parsed.path.startswith("/api/"):
             required_role = required_role_for_api(parsed.path)
             if not role_allows(role, required_role):
@@ -2179,11 +2267,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         required_role = required_role_for_page(parsed.path)
         if not role_allows(role, required_role):
-            self.send_forbidden(required_role)
+            self.send_response(303)
+            self.send_header("Location", f"/login?next={parsed.path}")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
             return
 
         try:
-            content, content_type = read_static_file(parsed.path)
+            served_path = "/token-gate" if parsed.path in {"/login", "/login/"} and not gate_identity(self.headers) else parsed.path
+            content, content_type = read_static_file(served_path)
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(content)))
@@ -2196,18 +2288,123 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if not self.valid_origin():
+            self.auth_json({"error": "Invalid request origin."}, 403)
+            return
+        if parsed.path == "/api/auth/logout":
+            self.auth_json({"ok": True}, clear=True)
+            return
+        if parsed.path == "/api/auth/unlock":
+            data = self.read_json_body()
+            if not isinstance(data, dict):
+                self.auth_json({"error": "Invalid request."}, 400)
+                return
+            if self.login_rate_limited():
+                self.auth_json({"error": "Too many attempts. Try again in five minutes."}, 429)
+                return
+            role = auth.login_token(str(data.get("token", "")))
+            if not role:
+                self.record_login_attempt(False)
+                self.auth_json({"error": "Invalid access token."}, 401)
+                return
+            self.record_login_attempt(True)
+            self.auth_json({"ok": True, "role": role}, gate=auth.issue_session(service_role=role, ttl=900, purpose="gate"))
+            return
+        if parsed.path in {"/api/auth/login", "/api/auth/google"}:
+            if self.login_rate_limited():
+                self.auth_json({"error": "Too many sign in attempts. Try again in five minutes."}, 429)
+                return
+            data = self.read_json_body()
+            if not isinstance(data, dict):
+                self.auth_json({"error": "Invalid request."}, 400)
+                return
+            try:
+                user = None
+                service_role = None
+                gate = gate_identity(self.headers)
+                if parsed.path == "/api/auth/google":
+                    if not gate:
+                        self.send_forbidden("access token")
+                        return
+                    user = auth.login_google(str(data.get("credential", "")))
+                elif data.get("method") == "token":
+                    service_role = auth.login_token(str(data.get("token", "")))
+                elif data.get("method") == "gate":
+                    service_role = gate["role"] if gate else None
+                else:
+                    if not gate:
+                        self.send_forbidden("access token")
+                        return
+                    user = auth.login_password(str(data.get("email", "")), str(data.get("password", "")))
+                if user and gate and not role_allows(gate["role"], user["role"]):
+                    user = None
+                if service_role and not auth.service_login_allowed(service_role):
+                    self.auth_json({"error": "Sign in with your account after entering the access token."}, 403)
+                    return
+                if not user and not service_role:
+                    self.record_login_attempt(False)
+                    self.auth_json({"error": "Invalid credentials or access has not been granted."}, 401)
+                    return
+                token = auth.issue_session(user, service_role)
+                role = user["role"] if user else service_role
+                self.record_login_attempt(True)
+                self.auth_json({"role": role, "next": "/super-admin" if role == "super_admin" else "/admin"}, session=token)
+            except ValueError as exc:
+                self.record_login_attempt(False)
+                self.auth_json({"error": str(exc)}, 400)
+            except Exception:
+                self.auth_json({"error": "Sign in is unavailable."}, 503)
+            return
+        if parsed.path == "/api/admin/users" or parsed.path.startswith("/api/admin/users/"):
+            identity = request_identity(self.headers)
+            if identity.get("role") != "super_admin":
+                self.send_forbidden("super_admin")
+                return
+            data = self.read_json_body()
+            if not isinstance(data, dict):
+                self.auth_json({"error": "Invalid request."}, 400)
+                return
+            try:
+                if parsed.path == "/api/admin/users":
+                    role = str(data.get("role", "admin"))
+                    user = auth.create_user(str(data.get("email", "")), role, str(data.get("password", "")) or None)
+                    replacement_session = auth.issue_session(user) if identity.get("id") is None and role == "super_admin" else None
+                    self.auth_json({"id": user["id"], "email": user["email"], "role": user["role"]}, 201, session=replacement_session)
+                    return
+                match = re.fullmatch(r"/api/admin/users/([0-9a-f]{32})/access", parsed.path)
+                if not match or type(data.get("active")) is not bool:
+                    self.auth_json({"error": "Invalid access update."}, 400)
+                    return
+                target = auth.get_user_by_id(match.group(1))
+                if not target:
+                    self.auth_json({"error": "Account not found."}, 404)
+                    return
+                if target["id"] == identity.get("id") or (target["role"] == "super_admin" and not data["active"]):
+                    self.auth_json({"error": "Super admin access cannot be revoked here."}, 400)
+                    return
+                auth.set_user_access(target["id"], data["active"])
+                self.auth_json({"ok": True})
+            except ValueError as exc:
+                self.auth_json({"error": str(exc)}, 400)
+            except Exception:
+                self.auth_json({"error": "Account update failed."}, 400)
+            return
         if parsed.path != "/run":
             self.send_error(404)
             return
 
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length).decode("utf-8")
-        form = parse_qs(body)
-        query = parse_qs(parsed.query)
-        query["token"] = form.get("token", query.get("token", [""]))
-        role = request_role(query, self.headers)
+        role = request_role(self.headers)
         if not role_allows(role, "super_admin"):
             self.send_forbidden("super_admin")
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 16384:
+                raise ValueError("Invalid request size.")
+            form = parse_qs(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self.send_json({"error": "Invalid request."}, 400)
             return
 
         task_key = form.get("task", [""])[0]
@@ -2218,12 +2415,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not accepted:
             DashboardHandler.last_output = message
         self.send_response(303)
-        token = token_from_query(query)
-        self.send_header("Location", f"/super-admin?token={token}" if token else "/super-admin")
+        self.send_header("Location", "/super-admin")
         self.end_headers()
 
 
 def main() -> None:
+    auth.session_secret()
+    auth.init_db()
     start_automatic_predictions()
     server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
     print(f"Dashboard running at http://{HOST}:{PORT}")

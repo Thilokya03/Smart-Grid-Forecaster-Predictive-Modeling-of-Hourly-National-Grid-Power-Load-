@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access check · UK Smart Grid Forecast</title>
+  <link rel="stylesheet" href="/static/login.css">
+</head>
+<body>
+  <main class="login-shell">
+    <a class="home-link" href="/">← Public forecast</a>
+    <div class="brand"><span class="brand-icon">↗</span><span>UK Smart Grid<br><strong>Forecast</strong></span></div>
+    <section class="login-card">
+      <p class="eyebrow">ACCESS CHECK</p>
+      <h1>Enter your access token</h1>
+      <p class="intro">Use the existing admin or super admin token to open the login page.</p>
+      <form id="unlockForm">
+        <label for="accessToken">Access token</label>
+        <input id="accessToken" name="token" type="password" autocomplete="off" required placeholder="Paste access token">
+        <button class="primary" type="submit">Open login page</button>
+      </form>
+      <p id="unlockMessage" role="alert" aria-live="polite"></p>
+    </section>
+    <p class="footnote">Ask a super admin for access if you do not have a token.</p>
+  </main>
+  <script src="/static/token_gate.js"></script>
+</body>
+</html>

@@ -16,6 +16,8 @@ htmlcov/
 venv/
 env/
 .env.*
+data/dashboard_auth.sqlite3*
+data/.auth-smoke-*/
 .venv-gpu/
 
 # Notebook/runtime caches

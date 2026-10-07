@@ -5,7 +5,6 @@ const isSuperAdminPage = window.location.pathname.replace(/\/+$/, "") === "/supe
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
-const accessToken = new URLSearchParams(window.location.search).get("token") || "";
 let publicSettings = {};
 try {
   publicSettings = JSON.parse(localStorage.getItem("ukForecastPublicSettings") || "{}");
@@ -28,52 +27,22 @@ function applyStoredTheme() {
   );
 }
 
-function withAccessToken(url) {
-  if (!accessToken) return url;
-  const parsed = new URL(url, window.location.origin);
-  parsed.searchParams.set("token", accessToken);
-  return `${parsed.pathname}${parsed.search}`;
-}
-
-function attachAccessTokenToForms() {
-  if (!accessToken) return;
-  document.querySelectorAll("form").forEach((form) => {
-    let input = form.querySelector("input[name='token']");
-    if (!input) {
-      input = document.createElement("input");
-      input.type = "hidden";
-      input.name = "token";
-      form.appendChild(input);
-    }
-    input.value = accessToken;
-  });
-}
-
-function attachAccessTokenToLinks() {
-  if (!accessToken) return;
-  document.querySelectorAll("a[href^='/admin'], a[href^='/model-comparison'], a[href^='/super-admin']").forEach((link) => {
-    const parsed = new URL(link.getAttribute("href"), window.location.origin);
-    parsed.searchParams.set("token", accessToken);
-    link.href = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  });
-}
-
 function prepareSuperAdminPage() {
   if (!isSuperAdminPage) return;
-  const keep = new Set(["pipelineHealth", "pipeline", "lastOutputSection"]);
+  const keep = new Set(["pipelineHealth", "pipeline", "lastOutputSection", "accessManagement"]);
   document.querySelectorAll("main > section").forEach((section) => {
     if (!keep.has(section.id)) section.hidden = true;
   });
   document.querySelectorAll("aside nav a").forEach((link) => {
     const href = link.getAttribute("href") || "";
-    if (href.startsWith("#") && !["#pipelineHealth", "#pipeline"].includes(href)) {
+    if (href.startsWith("#") && !["#pipelineHealth", "#pipeline", "#accessManagement"].includes(href)) {
       link.hidden = true;
     }
   });
 }
 
 async function fetchJson(url) {
-  const response = await fetch(withAccessToken(url), {signal: AbortSignal.timeout(30000)});
+  const response = await fetch(url, {signal: AbortSignal.timeout(30000)});
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -560,7 +529,7 @@ document.querySelectorAll(".task-grid form").forEach(form => form.addEventListen
   document.querySelectorAll(".task-grid button").forEach(button => { button.disabled = true; });
   document.getElementById("pipelineHealth").scrollIntoView({block: "start"});
   try {
-    const response = await fetch(withAccessToken("/run"), {method: "POST", headers: {"Accept": "application/json"}, body: new URLSearchParams(new FormData(form)), signal: AbortSignal.timeout(15000)});
+    const response = await fetch("/run", {method: "POST", headers: {"Accept": "application/json"}, body: new URLSearchParams(new FormData(form)), signal: AbortSignal.timeout(15000)});
     if (!response.ok) throw new Error("Request failed");
     const data = await response.json();
     message.textContent = data.message;
@@ -616,7 +585,5 @@ document.querySelectorAll("[data-model]").forEach((button) => {
 });
 
 applyStoredTheme();
-attachAccessTokenToForms();
-attachAccessTokenToLinks();
 prepareSuperAdminPage();
 refreshAll().catch((error) => console.error(error));

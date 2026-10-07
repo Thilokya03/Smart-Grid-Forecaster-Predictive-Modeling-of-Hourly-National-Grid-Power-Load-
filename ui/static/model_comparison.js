@@ -1,5 +1,4 @@
 const chartState = {};
-const accessToken = new URLSearchParams(window.location.search).get("token") || "";
 let publicSettings = {};
 try {
   publicSettings = JSON.parse(localStorage.getItem("ukForecastPublicSettings") || "{}");
@@ -22,24 +21,8 @@ function applyStoredTheme() {
   );
 }
 
-function withAccessToken(url) {
-  if (!accessToken) return url;
-  const parsed = new URL(url, window.location.origin);
-  parsed.searchParams.set("token", accessToken);
-  return `${parsed.pathname}${parsed.search}`;
-}
-
-function attachAccessTokenToLinks() {
-  if (!accessToken) return;
-  document.querySelectorAll("a[href^='/admin'], a[href^='/model-comparison'], a[href^='/super-admin']").forEach((link) => {
-    const parsed = new URL(link.getAttribute("href"), window.location.origin);
-    parsed.searchParams.set("token", accessToken);
-    link.href = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  });
-}
-
 async function fetchJson(url) {
-  const response = await fetch(withAccessToken(url));
+  const response = await fetch(url);
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -404,7 +387,6 @@ async function refreshComparisonPage() {
 }
 
 applyStoredTheme();
-attachAccessTokenToLinks();
 refreshComparisonPage().catch((error) => {
   console.error(error);
   document.getElementById("comparisonMessage").textContent = `Unable to load comparison data: ${error.message}`;

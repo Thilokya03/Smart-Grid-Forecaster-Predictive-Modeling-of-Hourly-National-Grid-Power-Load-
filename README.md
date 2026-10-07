@@ -58,8 +58,9 @@ http://127.0.0.1:8765
 Access levels:
 
 - Public: `http://127.0.0.1:8765/`
-- Admin model comparison: `http://127.0.0.1:8765/admin?token=<DASHBOARD_ADMIN_TOKEN>`
-- Super-admin controls: `http://127.0.0.1:8765/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>`
+- Sign in: `http://127.0.0.1:8765/login`
+- Admin model comparison: `http://127.0.0.1:8765/admin`
+- Super-admin controls: `http://127.0.0.1:8765/super-admin`
 
 Public pages:
 
@@ -73,13 +74,28 @@ CSV downloads, calculated insights, and saved theme preferences.
 - `/forecast/inputs`
 - `/settings`
 
-Set tokens before exposing the dashboard:
+Keep the previously used admin and super admin tokens configured, and add a session signing secret before starting the dashboard:
 
 ```powershell
-$env:DASHBOARD_ADMIN_TOKEN = "change-me-admin"
-$env:DASHBOARD_SUPER_ADMIN_TOKEN = "change-me-super"
+$env:DASHBOARD_ADMIN_TOKEN = "your-existing-admin-token"
+$env:DASHBOARD_SUPER_ADMIN_TOKEN = "your-existing-super-admin-token"
+$env:DASHBOARD_SESSION_SECRET = "replace-with-a-random-string-of-at-least-32-characters"
 python -m ui.pipeline_dashboard
 ```
+
+Create the first super admin from the server command line. The command prompts for a password and only works while no active super admin exists:
+
+```powershell
+python -m ui.auth create-super-admin --email you@example.com
+```
+
+For a hosted service without a command line, enter the configured super admin token at `/login`, choose **Continue with access token to set up the first account**, and create a named super admin in **Access Management**. Keep the token configured: it is required to open the login options on future visits.
+
+On the super admin page, **Access Management** creates admin accounts and additional super admin accounts. Set a password of at least 12 characters, or leave it empty for a Google-only account. Super admins can revoke and restore admin access; revoked sessions stop working immediately. Google sign in is available when `GOOGLE_CLIENT_ID` is set to a Google Web application client ID with this site's origin authorized. Google identities must use the email of an existing active account. The server verifies Google's ID token before signing in.
+
+`/login` initially shows only a token prompt. A correct `DASHBOARD_ADMIN_TOKEN` or `DASHBOARD_SUPER_ADMIN_TOKEN` opens the email/password and Google options for 15 minutes. An admin token cannot open a super admin account. The existing tokens remain valid; they do not need to be changed. Shared-token-only sign in is available solely to bootstrap the first account. After accounts exist, a person must also sign in with their own password or verified Google identity, so revoking their account cannot be bypassed with the shared token. Tokens and passwords are posted to the server; neither is placed in URLs. The server issues an eight-hour signed JWT in an HttpOnly cookie. Set `DASHBOARD_SECURE_COOKIES=true` when serving HTTPS without a proxy that supplies `X-Forwarded-Proto: https`.
+
+Accounts are stored in `DATABASE_URL` when configured (recommended for Render). Otherwise, the local `data/dashboard_auth.sqlite3` file is used. Set `DASHBOARD_AUTH_DATABASE_URL` to use a separate account database. Keep the database and `DASHBOARD_SESSION_SECRET` stable across deployments. The account database file is excluded from Git.
 
 ## Automatic Predictions
 
@@ -92,6 +108,8 @@ Use these environment variables:
 ```text
 DASHBOARD_ADMIN_TOKEN=change-me-admin
 DASHBOARD_SUPER_ADMIN_TOKEN=change-me-super
+DASHBOARD_SESSION_SECRET=<random string of at least 32 characters>
+GOOGLE_CLIENT_ID=<Google Web client ID, optional>
 AUTO_PREDICTIONS_ENABLED=true
 AUTO_PREDICTION_INTERVAL_HOURS=6
 AUTO_PREDICTION_RUN_ON_START=false
@@ -102,7 +120,7 @@ With automatic predictions enabled, the dashboard process runs `Refresh Latest P
 Super-admins can still refresh immediately from:
 
 ```text
-/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
+/super-admin
 ```
 
 If an automatic refresh is already running, the dashboard rejects overlapping manual runs and asks you to try again after it finishes.
@@ -153,10 +171,7 @@ Deploy steps:
 2. In Render, choose **New +** then **Blueprint**.
 3. Connect the GitHub repository.
 4. Select the `render.yaml` file.
-5. Set secret values for:
-   - `DASHBOARD_ADMIN_TOKEN`
-   - `DASHBOARD_SUPER_ADMIN_TOKEN`
-   - `DATABASE_URL`
+5. Keep the existing `DASHBOARD_ADMIN_TOKEN` and `DASHBOARD_SUPER_ADMIN_TOKEN`, and set `DASHBOARD_SESSION_SECRET` and `DATABASE_URL`. Set `GOOGLE_CLIENT_ID` if using Google sign in.
 6. Create the service and wait for the first deploy.
 7. Open the Render URL.
 
@@ -169,13 +184,13 @@ https://<your-service>.onrender.com/
 Admin page:
 
 ```text
-https://<your-service>.onrender.com/admin?token=<DASHBOARD_ADMIN_TOKEN>
+https://<your-service>.onrender.com/admin
 ```
 
 Super-admin page:
 
 ```text
-https://<your-service>.onrender.com/super-admin?token=<DASHBOARD_SUPER_ADMIN_TOKEN>
+https://<your-service>.onrender.com/super-admin
 ```
 
 Free Render web services do not support persistent disks, so this deployment stores generated `data/`, `artifacts/`, and current `results/fast_predictions/` files in the private deploy repository instead. The `Update forecast data` GitHub Actions workflow runs every 6 hours, commits changed forecast/data files, and Render can redeploy from the updated `main` branch.
@@ -243,18 +258,19 @@ Set these values in the Render web service under **Environment**:
 | Name | Value |
 | --- | --- |
 | `DATABASE_URL` | Supabase **Session pooler** URL with the database password |
-| `DASHBOARD_ADMIN_TOKEN` | A random token generated locally |
-| `DASHBOARD_SUPER_ADMIN_TOKEN` | A different random token generated locally |
+| `DASHBOARD_ADMIN_TOKEN` | Existing admin token required to open admin login options |
+| `DASHBOARD_SUPER_ADMIN_TOKEN` | Existing super admin token required to open super admin login options |
+| `DASHBOARD_SESSION_SECRET` | A random signing secret of at least 32 characters |
+| `GOOGLE_CLIENT_ID` | Google Web application client ID, if enabling Google sign in |
 
 `DATABASE_SCHEMA=weather_pipeline` and `PGSSLMODE=require` are already set by
 `render.yaml`. Because `DATABASE_URL` has `sync: false`, add it manually when
 updating an existing Render Blueprint, then choose **Save and deploy**.
 
-Generate the two dashboard tokens locally; these do not come from Supabase:
+Keep the existing dashboard tokens. Generate only the new session secret locally; these do not come from Supabase:
 
 ```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 In GitHub, open **Settings > Secrets and variables > Actions** and create one

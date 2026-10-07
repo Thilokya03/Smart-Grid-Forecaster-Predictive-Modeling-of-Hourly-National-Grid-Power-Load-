@@ -9,6 +9,12 @@ body { margin: 0; min-width: 320px; }
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
 aside { background: #102a43; color: #eaf2f8; padding: 22px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 aside h1 { font-size: 20px; line-height: 1.2; margin: 0 0 18px; }
+.logout-button { width: 100%; margin-top: 15px; padding: 10px; background: transparent; color: #eaf2f8; border: 1px solid #688499; border-radius: 6px; cursor: pointer; text-align: left; }
+.account-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; margin: 16px 0; }
+.account-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
+.account-form input, .account-form select { width: 100%; min-height: 39px; padding: 8px; border: 1px solid #9fb3c8; border-radius: 6px; }
+#accountTable { min-width: 650px; }
+#accountTable button { min-height: 32px; padding: 5px 9px; }
 nav a { display: block; color: #d9e8f5; text-decoration: none; padding: 9px 10px; border-radius: 6px; margin-bottom: 4px; font-size: 14px; }
 nav a:hover { background: #243b53; }
 .primary-link { display: inline-block; border: 1px solid #0b5cab; background: #0b5cab; color: #fff; text-decoration: none; padding: 11px 14px; border-radius: 6px; font-weight: 700; }
