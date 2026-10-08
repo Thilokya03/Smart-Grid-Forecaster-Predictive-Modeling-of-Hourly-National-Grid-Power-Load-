@@ -1,5 +1,54 @@
 # Model Comparison Status
 
+> ## ⚠️ Every number below is scored partly on fabricated demand
+>
+> Added 2026-10-08 while building the 168-hour comparison
+> (`docs/comparison_168h_report.md`). Nothing in this document has been
+> deleted, because the protocol descriptions remain accurate and the artifacts
+> remain on disk — but the **leaderboard numbers cannot be interpreted as
+> written**, for a reason that is upstream of every model.
+>
+> `demand_mw` in `data/processed/master_training_data.csv` is the **single
+> constant 25494.0 for all 140,257 hours from 2010-01-01 00:00 through
+> 2025-12-31 23:00**. Real metered demand exists only from **2026-01-01 00:00**
+> onward (6,652 hours as of the 2026-10-05 snapshot).
+>
+> **Cause.** `uk_training_data_prep/build_hourly_load_data.py` reads one NESO
+> year file per year from `data/raw/neso/`, and only
+> `demanddataupdate_2026.csv` is present — the 2010–2025 files are expected in
+> `~/Downloads` and are absent. `build_load_dataset()` then reindexes the
+> 2026-only series onto a full hourly index starting 2010-01-01 and calls
+> `.interpolate(method="time").ffill().bfill()` (line 117). The `bfill()`
+> propagated the first real 2026 observation — 25494.0, the mean of settlement
+> periods 1 and 2 on 2026-01-01 — backwards across sixteen years.
+>
+> **What this does to the table below.** Of the four validation folds, two
+> (`aug_2025`, `nov_2025`) lie entirely inside the constant region: their
+> "actual demand" is 25494.0 at every hour, with zero variance. For those folds
+> a persistence baseline scores MAE 0, R² is undefined, and any reported MAE is
+> a measure of how far a model drifts from a flat line, not of forecast skill.
+> `feb_2026` and `may_2026` are real. So each mean in the leaderboard is an
+> average of two real fold scores and two scores against a constant, and the
+> per-fold observation that "February is the hardest fold for all three models"
+> is simply the observation that February is one of the two folds with real
+> demand in it.
+>
+> **This also explains two of the anomalies already catalogued below** without
+> needing the explanations offered there: the `aug_2025` R²=0.62 /
+> RMSE≫MAE divergence for Transformer+features (item 9), and Prophet's
+> persistent ~1600–1900 MW positive bias (item 10) — a model fitted largely on
+> a flat 25494.0 line will sit near that level while real demand moves.
+>
+> **Fix required before these numbers mean anything:** obtain the NESO
+> 2010–2025 `demanddataupdate_YYYY.csv` files, rebuild the master table, and
+> change the back-fill at `build_hourly_load_data.py:117` so absent history is
+> left as NaN (or the series is truncated to its real start) rather than
+> back-filled with a constant.
+>
+> The 168-hour comparison in `docs/comparison_168h_report.md` works only on the
+> real-demand span and re-derives its folds accordingly; see that document for
+> what can and cannot be concluded from 2026-only data.
+
 All models below forecast 24 hours ahead from 168 hours of history, on the same
 four chronological validation folds (Aug 2025, Nov 2025, Feb 2026, May 2026)
 defined in `models/cross_validation.py`. June 2026 is the locked final test
