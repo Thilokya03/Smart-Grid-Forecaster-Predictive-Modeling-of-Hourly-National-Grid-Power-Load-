@@ -11,9 +11,9 @@ on:
       - "ui/pipeline_runner.py"
       - "ui/pipeline_health.py"
       - "requirements-render.txt"
-  schedule:
-    - cron: "17 0,6,12,18 * * *"
-      timezone: "Europe/London"
+  # schedule:
+  #   - cron: "17 0,6,12,18 * * *"
+  #     timezone: "Europe/London"
   workflow_dispatch:
 
 permissions:
